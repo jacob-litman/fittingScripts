@@ -92,13 +92,13 @@ class StructXYZ:
         return self.def_atypes[self.assigned_atypes[i]]
 
     def append_atom(self, name: str, xyz: np.ndarray, atype: int, bonds: List[int] = None):
+        if atype in self.probe_types:
+            self.probe_indices.append(self.n_atoms)
         self.n_atoms += 1
         self.atom_numbers = np.append(self.atom_numbers, [self.n_atoms])
         self.atom_names = np.append(self.atom_names, [name])
         self.coords = np.append(self.coords, [xyz], axis=0)
         self.assigned_atypes = np.append(self.assigned_atypes, [atype])
-        if atype in self.probe_types:
-            self.probe_indices.append(atype)
         if bonds is None:
             bonds = []
         self.bonds_bidi.append(bonds)
@@ -244,7 +244,7 @@ class StructXYZ:
             f.write(f"{com_opts.charge} {com_opts.spin}\n")
             for i in range(self.n_atoms):
                 if i in self.probe_indices:
-                    eprint(f"Atom is likely a probe: not written as an atom: {self.format_atom(i)}")
+                    # eprint(f"Atom is likely a probe: not written as an atom: {self.format_atom(i)}")
                     continue
                 el = self.get_atype_info(i)[4]
                 el_name = elements[el]

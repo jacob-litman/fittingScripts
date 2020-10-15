@@ -99,7 +99,7 @@ def main():
 
 def main_inner(xyz_input: StructXYZ, at: int = DEFAULT_PROBE_TYPE, dx: float = DEFAULT_DIST,
                exponent: int = DEFAULT_EXP, hwt: float = DEFAULT_HWT, out_file_base: str = DEFAULT_OUTFILE,
-               xyzpdb: str = 'xyzpdb', probe_type = None, keyf: str = None) -> int:
+               xyzpdb: str = 'xyzpdb', probe_type = None, keyf: str = None) -> np.ndarray:
     """Main driver for the script; can be called externally as well. Returns the atom type used for the probe."""
     n_real_ats = xyz_input.n_atoms
     real_xyz = xyz_input.coords.copy()
@@ -120,14 +120,16 @@ def main_inner(xyz_input: StructXYZ, at: int = DEFAULT_PROBE_TYPE, dx: float = D
         at = probe_type[0]
     xyz_input.append_atom('PC', np.zeros(3), at)
 
-    for i in range(n_real_ats):
-        inner_loop(xyz_input, i, dx, exponent, real_xyz, avoid_weight, out_file_base, xyzpdb, keyf)
+    probe_locs = np.zeros((n_real_ats, 3))
 
-    return at
+    for i in range(n_real_ats):
+        inner_loop(xyz_input, i, dx, exponent, real_xyz, avoid_weight, out_file_base, xyzpdb, probe_locs, keyf)
+
+    return probe_locs
 
 
 def inner_loop(xyz_input: StructXYZ, ai: int, dx: float, exponent: int, real_xyz: np.ndarray, avoid_weight: np.ndarray,
-               out_file_base: str, xyzpdb: str, keyf: str = None):
+               out_file_base: str, xyzpdb: str, out_locs: np.ndarray, keyf: str = None):
     if keyf is None:
         keyf = xyz_input.key_file
     center_xyz = real_xyz[ai]
@@ -180,6 +182,9 @@ def inner_loop(xyz_input: StructXYZ, ai: int, dx: float, exponent: int, real_xyz
     xyz_input.coords[n_ats, :] = lowest_cart
     outf = f"{atom_quick_id}{os.sep}{out_file_base}.xyz"
     xyz_input.write_out(outf)
+
+    for i in range(3):
+        out_locs[ai, :] = lowest_cart
 
     if keyf is not None:
         # Append .pdb afterwards just in case of weird filename shenaniganry.

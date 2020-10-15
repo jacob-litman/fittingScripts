@@ -5,6 +5,7 @@ import re
 import os
 import sys
 import ProbePlacement
+import shutil
 
 from ComOptions import ComOptions
 from StructureXYZ import StructXYZ
@@ -35,15 +36,15 @@ def main():
     else:
         keyf = args.inKey
     xyz_in = StructXYZ(args.infile, key_file=keyf)
+    n_physical = xyz_in.n_atoms
 
     eprint("Step 1: writing reference .com file")
     init_com_opts = ComOptions(args.charge, args.spin)
     jname = 'QM_REF'
     init_com_opts.chk = f"{jname}.chk"
-    #self, com_opts: ComOptions, fname: str = None, jname: str = None, probe_charge: float = 0.125
     xyz_in.write_com(com_opts=init_com_opts, fname='QM_REF.com', jname=jname)
+    physical_atom_ids = [f"{xyz_in.atom_names[i]}{i+1}" for i in range(n_physical)]
     # TODO: Customize this via either poltype.ini or similar.
-
 
     eprint("Step 2: writing key files with probe (with reference and uncharged solutes)")
     probe_type = xyz_in.append_atype_def(ProbePlacement.DEFAULT_PROBE_TYPE, ProbePlacement.DEFAULT_PROBE_TYPE,
@@ -70,8 +71,18 @@ def main():
     xyz_in.write_key_old_neutral('PR_NREF.key', added_lines=addtl_lines)
 
     eprint("Step 3: placing probe!")
-    ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type, keyf='QM_PR.key')
+    probe_locs = ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type, keyf='QM_PR.key')
 
+    probe_qm_opt = ComOptions(args.charge, args.spin)
+    probe_qm_opt.chk = "QM_PR.chk"
+    for i, pid in enumerate(physical_atom_ids):
+        dirn = f"{pid}{os.sep}"
+        shutil.copy2(f"{dirn}QM_PR.xyz", f"{dirn}PR_NREF.xyz")
+        shutil.copy2('PR_NREF.key', dirn)
+        shutil.copy2('QM_PR.key', dirn)
+        shutil.copy2(keyf, f"{dirn}QM_REF.key")
+        xyz_in.coords[n_physical, :] = probe_locs[i, :]
+        xyz_in.write_com(probe_qm_opt, f"{dirn}QM_PR.com", "QM_PR", args.probe_charge)
 
 
 if __name__ == "__main__":
