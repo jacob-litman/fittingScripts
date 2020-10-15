@@ -1,9 +1,22 @@
 import sys
 import os
+import subprocess
+from typing import List
 
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
+
+
+def verbose_call(args: List[str], to_stderr: bool = True, **kwargs):
+    out_str = "Calling:"
+    for a in args:
+        out_str += f" {a}"
+    if to_stderr:
+        eprint(out_str)
+    else:
+        print(out_str)
+    subprocess.run(args, **kwargs)
 
 
 def version_file(fname: str) -> str:
