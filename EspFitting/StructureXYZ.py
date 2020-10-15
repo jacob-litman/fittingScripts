@@ -11,7 +11,7 @@ import os
 adef_patt = re.compile(r'^atom +(\d+) +(\d+) +(\S+) +"([^"]+)" +(\d+) +(\d+\.\d+) +(\d+)\s*$')
 # Capture
 mpole_cont_patt = re.compile(r'^( +-?\d+\.\d+)+ *\\? *$')
-polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( \d+)* *$')
+polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( [ 0-9]+ *)$')
 DEFAULT_PROBE_ATOM_NUM = 999
 elements = {1: 'H', 2: 'HE',
             3: 'LI', 4: 'BE', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 10: 'NE',
@@ -208,10 +208,7 @@ class StructXYZ:
                         m = polarize_patt.match(line)
                         f.write(m.group(1))
                         f.write("0.0000     0.0100")
-                        n_grp = len(m.groups())
-                        for i in range(2, n_grp, 1):
-                            f.write(m.group(i))
-                        f.write("\n")
+                        f.write(m.group(3) + "\n")
                         pass
 
                     else:
