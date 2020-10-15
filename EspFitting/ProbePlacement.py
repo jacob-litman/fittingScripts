@@ -99,7 +99,7 @@ def main():
 
 def main_inner(xyz_input: StructXYZ, at: int = DEFAULT_PROBE_TYPE, dx: float = DEFAULT_DIST,
                exponent: int = DEFAULT_EXP, hwt: float = DEFAULT_HWT, out_file_base: str = DEFAULT_OUTFILE,
-               xyzpdb: str = 'xyzpdb', probe_type = None) -> int:
+               xyzpdb: str = 'xyzpdb', probe_type = None, keyf: str = None) -> int:
     """Main driver for the script; can be called externally as well. Returns the atom type used for the probe."""
     n_real_ats = xyz_input.n_atoms
     real_xyz = xyz_input.coords.copy()
@@ -121,14 +121,15 @@ def main_inner(xyz_input: StructXYZ, at: int = DEFAULT_PROBE_TYPE, dx: float = D
     xyz_input.append_atom('PC', np.zeros(3), at)
 
     for i in range(n_real_ats):
-        inner_loop(xyz_input, i, dx, exponent, real_xyz, avoid_weight, out_file_base, xyzpdb)
+        inner_loop(xyz_input, i, dx, exponent, real_xyz, avoid_weight, out_file_base, xyzpdb, keyf)
 
     return at
 
 
 def inner_loop(xyz_input: StructXYZ, ai: int, dx: float, exponent: int, real_xyz: np.ndarray, avoid_weight: np.ndarray,
-               out_file_base: str, xyzpdb: str):
-    keyf = xyz_input.key_file
+               out_file_base: str, xyzpdb: str, keyf: str = None):
+    if keyf is None:
+        keyf = xyz_input.key_file
     center_xyz = real_xyz[ai]
     n_ats = real_xyz.shape[0]
     atom_quick_id = f"{xyz_input.atom_names[ai]}{ai + 1:d}"

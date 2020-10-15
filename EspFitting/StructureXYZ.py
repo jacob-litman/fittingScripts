@@ -9,7 +9,6 @@ import os
 
 # Captured: atom type, atom class, atom name, atom description, atomic number, mass, valency
 adef_patt = re.compile(r'^atom +(\d+) +(\d+) +(\S+) +"([^"]+)" +(\d+) +(\d+\.\d+) +(\d+)\s*$')
-# Capture
 mpole_cont_patt = re.compile(r'^( +-?\d+\.\d+)+ *\\? *$')
 polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( [ 0-9]+ *)$')
 DEFAULT_PROBE_ATOM_NUM = 999

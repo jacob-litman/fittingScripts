@@ -70,7 +70,7 @@ def main():
     xyz_in.write_key_old_neutral('PR_NREF.key', added_lines=addtl_lines)
 
     eprint("Step 3: placing probe!")
-    ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type)
+    ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type, keyf='QM_PR.key')
 
 
 
