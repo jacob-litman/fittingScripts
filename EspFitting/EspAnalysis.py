@@ -2,8 +2,9 @@
 
 import argparse
 import os
-import subprocess
-from JMLUtils import eprint, verbose_call
+import shutil
+import re
+from JMLUtils import eprint, verbose_call, name_to_atom
 import SubPots
 
 
@@ -18,18 +19,22 @@ def main_inner(tinker_path: str = '', gauss_path: str = ''):
     if not gauss_path.endswith(os.sep) and gauss_path != '':
         gauss_path += os.sep
     formchk = gauss_path + "formchk"
-    cubegen = gauss_path + "cubegen"
+    cubegen = gauss_path + "cubegen"\
+    #eprint(f"Command paths: potential is {potential}\nformchk is {formchk}\ncubegen is {cubegen}\n")
+    verbose_call([formchk, 'QM_REF.chk'])
 
     for pdir in probe_dirs:
+        shutil.copy2('QM_REF.fchk', pdir)
         os.chdir(pdir)
-        eprint(f"Operating in directory {pdir}\n")
+        at_name = re.sub(r"^\./", '', pdir)
+        foc_atom = name_to_atom('QM_PR.xyz', at_name)
+        eprint(f"Operating in directory {pdir}, atom {foc_atom[1]}{foc_atom[0]}\n")
+
         verbose_call([potential, "1", "QM_PR.xyz", 'QM_PR.key'])
         verbose_call([formchk, "QM_PR.chk"])
 
         # TODO: Check that it actually is MP2 potential.
         with open('QM_PR.grid', 'r') as f:
-            #eprint(f"Calling {cubegen} 0 potential=MP2 QM_PR.fchk QM_PR.cube -5 h < MM_PR.grid")
-            #subprocess.run([cubegen, '0', 'potential=MP2', 'QM_PR.fchk', 'QM_PR.cube', '-5', 'h'], stdin=f)
             verbose_call([cubegen, '0', 'potential=MP2', 'QM_PR.fchk', 'QM_PR.cube', '-5', 'h'], kwargs={'stdin': f})
 
         verbose_call([potential, "2", "QM_PR.cube"])
@@ -40,7 +45,7 @@ def main_inner(tinker_path: str = '', gauss_path: str = ''):
                 SubPots.main_inner('PR_NREF.pot', 'QM_PR.pot', out=f, err=f2, subtract=False)
 
         with open('unfit_diff.log', 'w') as f:
-            verbose_call([potential, "5", "MM_PR.xyz", "QM_PR_BACK.pot", "Y"], kwargs={'stdout': f})
+            verbose_call([potential, "5", "QM_PR.xyz", "QM_PR_BACK.pot", "Y"], kwargs={'stdout': f})
 
         with open('QM_PR.grid', 'r') as f:
             verbose_call([cubegen, '0', 'potential=MP2', 'QM_REF.fchk', 'QM_REF.cube', '-5', 'h'], kwargs={'stdin': f})
@@ -50,7 +55,8 @@ def main_inner(tinker_path: str = '', gauss_path: str = ''):
         with open('qm_polarization.pot', 'w') as f:
             with open('polarize_diff_qm.log', 'w') as f2:
                 # TODO: Log atom-focal information
-                SubPots.main_inner('QM_PR.pot', 'QM_REF.pot', out=f, err=f2, subtract=True)
+                SubPots.main_inner('QM_PR.pot', 'QM_REF.pot', out=f, err=f2, subtract=True, x=foc_atom[2],
+                                   y=foc_atom[3], z=foc_atom[4])
         eprint('\n')
         os.chdir("..")
 

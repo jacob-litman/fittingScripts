@@ -7,7 +7,7 @@ import numpy as np
 import io
 from JMLUtils import eprint
 
-DEFAULT_RADIUS = 3.0
+DEFAULT_RADIUS = 2.5
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     main_inner(sys.argv[1], sys.argv[2])
 
 
-def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.TextIOWrapper = sys.stderr, 
+def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.TextIOWrapper = sys.stderr,
                subtract: bool = False, x: float = None, y: float = None, z: float = None, 
                radius: float = DEFAULT_RADIUS):
     all_diffs = []
@@ -84,8 +84,9 @@ def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.Tex
             mue_all = np.mean(np.abs(all_arr))
             mse_all = np.mean(all_arr)
             sd_all = np.std(all_arr, ddof=1)
-            eprint(f"Statistics over {len(focus_diffs):d} points in region of interest: RMSD {rms_all:.6f}, MUE {mue_all:.6f}, MSE {mse_all:.6f}, "
-                   f"SD {sd_all:.6f}")
+            err.write(f"Statistics over {len(focus_diffs):d} points in region of interest: RMSD {rms_all:.6f}, MUE {mue_all:.6f}, MSE {mse_all:.6f}, "
+                   f"SD {sd_all:.6f}\n")
+            err.write(f"Region of interest: {radius:.4f} Angstroms around {x:.4f},{y:.4f},{z:.4f}\n")
 
 
 if __name__ == "__main__":

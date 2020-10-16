@@ -4,7 +4,7 @@ from typing import List
 from pathlib import Path
 
 from ComOptions import ComOptions
-from JMLUtils import eprint, version_file
+from JMLUtils import eprint, version_file, cryst_patt
 import os
 
 # Captured: atom type, atom class, atom name, atom description, atomic number, mass, valency
@@ -21,7 +21,6 @@ elements = {1: 'H', 2: 'HE',
 
 
 class StructXYZ:
-    cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
 
     def __init__(self, in_file: str, probe_types: List[int] = None, key_file: str = None):
         self.in_file = in_file
