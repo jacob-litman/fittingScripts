@@ -1,10 +1,14 @@
+import subprocess
+import sys
+from io import TextIOWrapper
+
 import numpy as np
 import re
 from typing import List
 from pathlib import Path
 
 from ComOptions import ComOptions
-from JMLUtils import eprint, version_file, cryst_patt
+from JMLUtils import eprint, version_file, cryst_patt, verbose_call
 import os
 
 # Captured: atom type, atom class, atom name, atom description, atomic number, mass, valency
@@ -21,7 +25,6 @@ elements = {1: 'H', 2: 'HE',
 
 
 class StructXYZ:
-
     def __init__(self, in_file: str, probe_types: List[int] = None, key_file: str = None):
         self.in_file = in_file
         with open(self.in_file, 'r') as f:
@@ -30,7 +33,7 @@ class StructXYZ:
             self.n_atoms = int(in_line.strip().split()[0])
             skip_r = 1
             in_line = f.readline()
-            cryst_match = self.cryst_patt.match(in_line)
+            cryst_match = cryst_patt.match(in_line)
             if cryst_match:
                 skip_r = 2
                 self.cryst_info = [float(cryst_match.group(i)) for i in range(1, 7, 1)]
@@ -85,6 +88,16 @@ class StructXYZ:
                         self.def_atypes[atype] = new_atype
                         # TODO: Read more information.
                     in_line = f.readline()
+
+    def __str__(self):
+        if self.aperiodic:
+            ret_str = f'Aperiodic system {self.in_file}'
+        else:
+            ret_str = f'Periodic system {self.in_file}'
+        if self.key_file is None:
+            return f'{ret_str} with no known key file'
+        else:
+            return f'{ret_str} with key file {self.key_file}'
 
     def get_atype_info(self, i: int) -> (int, int, str, str, int, float, int):
         assert self.def_atypes is not None
@@ -259,3 +272,18 @@ class StructXYZ:
                         f.write(f"{self.coords[pi][i]:.6f} ")
                     f.write(f"{probe_charge:f}\n")
                 f.write('\n')
+
+    def get_esp_file(self, potential: str = 'potential', keyf: str = None) -> str:
+        if keyf is None:
+            keyf = self.key_file
+        eprint(f"Calling (with input capture): potential 3 {self.in_file} -k {keyf} Y")
+        output = subprocess.check_output([potential, '3', self.in_file, '-k', keyf, 'Y'])
+        for line in output.splitlines():
+            line = str(line).strip()
+            if line.startswith('Electrostatic Potential Written To :'):
+                return re.sub('^Electrostatic Potential Written To : +', '', line)
+                pass
+        raise RuntimeError(f'Was unable to find the file electrostatic potential was written to for system {self}')
+
+    def get_esp(self, potential: str = 'potential', keyf: str = None) -> np.ndarray:
+        return np.genfromtxt(self.get_esp_file(potential=potential, keyf=keyf), skip_header=1, usecols=(1, 2, 3, 4))

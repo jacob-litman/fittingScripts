@@ -18,14 +18,13 @@ def main():
                                                                                     'hydrogen distances')
     parser.add_argument('-e', dest='exp', type=int, default=3, help='Exponent for the square of distance in target '
                                                                     'function (i.e. exp in E = k*separation^(-2*exp)')
-    parser.add_argument('-x', dest='xyzpdb', type=str, default='xyzpdb', help='Name or full path of Tinker '
-                                                                              'xyzpdb')
     parser.add_argument('-i', dest='infile', type=str, default='ttt.xyz', help='Name of input .xyz file')
     parser.add_argument('--inKey', type=str, default=None, help='Name of input .key file (else from infile)')
     # Required options. Charge/spin are easily forgotten, which is why they're required.
     parser.add_argument('-c', dest='charge', type=int, required=True, help='Charge of the molecule. REQUIRED.')
     parser.add_argument('-s', dest='spin', type=int, required=True, help='Spin of the molecule. REQUIRED.')
     parser.add_argument('-q', dest='probe_charge', type=float, default='0.125', help='Charge to assign to the probe')
+    parser.add_argument('-t', dest='tinker_path', type=str, default='', help='Path to Tinker executables')
 
     args = parser.parse_args()
     if args.inKey is None:
@@ -73,6 +72,7 @@ def main():
     eprint("Step 3: placing probe!")
     probe_locs = ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type, keyf='QM_PR.key')
 
+    eprint("Step 4: creating probe subdirectories.")
     probe_qm_opt = ComOptions(args.charge, args.spin)
     probe_qm_opt.chk = "QM_PR.chk"
     for i, pid in enumerate(physical_atom_ids):

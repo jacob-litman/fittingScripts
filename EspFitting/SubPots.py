@@ -19,8 +19,8 @@ def main():
 
 
 def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.TextIOWrapper = sys.stderr,
-               subtract: bool = False, x: float = None, y: float = None, z: float = None, 
-               radius: float = DEFAULT_RADIUS):
+               subtract: bool = False, x: float = None, y: float = None, z: float = None,
+               radius: float = DEFAULT_RADIUS, header_comment: str = None):
     all_diffs = []
     do_focus = False
     focus_xyz = (math.nan, math.nan, math.nan)
@@ -39,10 +39,19 @@ def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.Tex
     else:
         err.write(f"Adding potential {f2} to {f1}\n")
     keep_patt = re.compile(r"(.+ )(-?[0-9]+\.[0-9]+) *$")
+
+    if header_comment is None:
+        if subtract:
+            header_comment = 'Subtraction.pot'
+        else:
+            header_comment = 'Addition.pot'
+
     with open(f1, "r") as p1:
         with open(f2, "r") as psub:
             p1_line = p1.readline()
             psub_line = psub.readline()
+            p1_toks = p1_line.strip().split()
+            out.write(f" {p1_toks[0]:>7s}  {header_comment}\n")
             n_grid_points = int(p1_line.strip().split()[0])
             assert n_grid_points == int(psub_line.strip().split()[0])
             print(p1_line, end='')
@@ -84,8 +93,8 @@ def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.Tex
             mue_all = np.mean(np.abs(all_arr))
             mse_all = np.mean(all_arr)
             sd_all = np.std(all_arr, ddof=1)
-            err.write(f"Statistics over {len(focus_diffs):d} points in region of interest: RMSD {rms_all:.6f}, MUE {mue_all:.6f}, MSE {mse_all:.6f}, "
-                   f"SD {sd_all:.6f}\n")
+            err.write(f"Statistics over {len(focus_diffs):d} points in region of interest: RMSD {rms_all:.6f}, "
+                      f"MUE {mue_all:.6f}, MSE {mse_all:.6f}, SD {sd_all:.6f}\n")
             err.write(f"Region of interest: {radius:.4f} Angstroms around {x:.4f},{y:.4f},{z:.4f}\n")
 
 
