@@ -19,7 +19,7 @@ def main_inner(tinker_path: str = '', gauss_path: str = ''):
     if not gauss_path.endswith(os.sep) and gauss_path != '':
         gauss_path += os.sep
     formchk = gauss_path + "formchk"
-    cubegen = gauss_path + "cubegen"\
+    cubegen = gauss_path + "cubegen"
     #eprint(f"Command paths: potential is {potential}\nformchk is {formchk}\ncubegen is {cubegen}\n")
     verbose_call([formchk, 'QM_REF.chk'])
 
@@ -42,7 +42,7 @@ def main_inner(tinker_path: str = '', gauss_path: str = ''):
 
         with open('QM_PR_BACK.pot', 'w') as f:
             with open('QM_PR_BACK.potlog', 'w') as f2:
-                SubPots.main_inner('PR_NREF.pot', 'QM_PR.pot', out=f, err=f2, subtract=False)
+                SubPots.main_inner('QM_PR.pot', 'PR_NREF.pot', out=f, err=f2, subtract=False)
 
         with open('unfit_diff.log', 'w') as f:
             verbose_call([potential, "5", "QM_PR.xyz", "QM_PR_BACK.pot", "Y"], kwargs={'stdout': f})
@@ -54,8 +54,17 @@ def main_inner(tinker_path: str = '', gauss_path: str = ''):
         SubPots.main_inner('QM_PR.pot', 'QM_REF.pot')
         with open('qm_polarization.pot', 'w') as f:
             with open('polarize_diff_qm.log', 'w') as f2:
-                # TODO: Log atom-focal information
                 SubPots.main_inner('QM_PR.pot', 'QM_REF.pot', out=f, err=f2, subtract=True, x=foc_atom[2],
+                                   y=foc_atom[3], z=foc_atom[4])
+
+        # Not included in the original eval scripts.
+        # Possible OS incompatibility
+        os.symlink('QM_PR.xyz', 'MM_PR.xyz')
+        shutil.copy2('QM_PR.key', 'MM_PR.key')
+        verbose_call([potential, '3', 'MM_PR.xyz', 'Y'])
+        with open('mm_polarization.pot', 'w') as f:
+            with open('polarize_diff_mm.log', 'w') as f2:
+                SubPots.main_inner('MM_PR.pot', 'PR_NREF.pot', out=f, err=f2, subtract=True, x=foc_atom[2],
                                    y=foc_atom[3], z=foc_atom[4])
         eprint('\n')
         os.chdir("..")
