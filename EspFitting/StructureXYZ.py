@@ -273,16 +273,18 @@ class StructXYZ:
                     f.write(f"{probe_charge:f}\n")
                 f.write('\n')
 
-    def get_esp_file(self, potential: str = 'potential', keyf: str = None) -> str:
+    def get_esp_file(self, potential: str = 'potential', keyf: str = None, verbose: bool = False) -> str:
         if keyf is None:
             keyf = self.key_file
-        eprint(f"Calling (with input capture): potential 3 {self.in_file} -k {keyf} Y")
-        output = subprocess.check_output([potential, '3', self.in_file, '-k', keyf, 'Y'])
+        if verbose:
+            eprint(f"Calling (with input capture): potential 3 {self.in_file} {keyf} Y {keyf}")
+        sp_args = [potential, '3', self.in_file, keyf, 'Y', keyf]
+        output = subprocess.check_output(sp_args)
         for line in output.splitlines():
-            line = str(line).strip()
-            if line.startswith('Electrostatic Potential Written To :'):
-                return re.sub('^Electrostatic Potential Written To : +', '', line)
-                pass
+            line = str(line, encoding=sys.getdefaultencoding()).strip()
+            if line.startswith('Electrostatic Potential Written To'):
+                esp_fi = re.sub('^Electrostatic Potential Written To : +', '', line)
+                return esp_fi
         raise RuntimeError(f'Was unable to find the file electrostatic potential was written to for system {self}')
 
     def get_esp(self, potential: str = 'potential', keyf: str = None) -> np.ndarray:
