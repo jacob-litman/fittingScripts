@@ -2,7 +2,7 @@ import sys
 import os
 import subprocess
 import re
-from typing import List
+from typing import Sequence
 
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
 
@@ -11,7 +11,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-def verbose_call(args: List[str], kwargs = None, to_stderr: bool = True):
+def verbose_call(args: Sequence[str], kwargs = None, to_stderr: bool = True):
     out_str = "Calling:"
     for a in args:
         out_str += f" {a}"
@@ -35,7 +35,7 @@ def version_file(fname: str) -> str:
         return fname
 
 
-def name_to_atom(xyzf: str, name: str) -> (int, str, float, float, float, int, List[int]):
+def name_to_atom(xyzf: str, name: str) -> (int, str, float, float, float, int, Sequence[int]):
     with open(xyzf, 'r') as f:
         f.readline()
         line = f.readline()

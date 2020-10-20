@@ -5,11 +5,11 @@ import os
 import shutil
 import re
 from JMLUtils import eprint, verbose_call, name_to_atom
-from typing import List
+from typing import Sequence
 import SubPots
 
 
-def main_inner(tinker_path: str = '', gauss_path: str = '', probe_types: List[int] = None):
+def main_inner(tinker_path: str = '', gauss_path: str = '', probe_types: Sequence[int] = None):
     assert tinker_path is not None and gauss_path is not None
     probe_dirs = [f.path for f in os.scandir(".") if (f.is_dir() and os.path.exists(f"{f.path}{os.sep}QM_PR.xyz"))]
 
@@ -105,7 +105,7 @@ def main_inner(tinker_path: str = '', gauss_path: str = '', probe_types: List[in
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', dest='probe_type', type=int, default=999, help='Probe aotm type')
+    parser.add_argument('-p', dest='probe_type', type=int, default=999, help='Probe atom type')
     parser.add_argument('-t', dest='tinker_path', type=str, default='', help='Path to Tinker executables')
     parser.add_argument('-g', dest='gauss_path', type=str, default='', help='Path to Gaussian executables')
     args = parser.parse_args()

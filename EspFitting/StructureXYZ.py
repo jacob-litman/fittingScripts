@@ -4,7 +4,7 @@ from io import TextIOWrapper
 
 import numpy as np
 import re
-from typing import List
+from typing import Sequence
 from pathlib import Path
 
 from ComOptions import ComOptions
@@ -25,7 +25,7 @@ elements = {1: 'H', 2: 'HE',
 
 
 class StructXYZ:
-    def __init__(self, in_file: str, probe_types: List[int] = None, key_file: str = None):
+    def __init__(self, in_file: str, probe_types: Sequence[int] = None, key_file: str = None):
         self.in_file = in_file
         with open(self.in_file, 'r') as f:
             in_line = f.readline()
@@ -103,7 +103,7 @@ class StructXYZ:
         assert self.def_atypes is not None
         return self.def_atypes[self.assigned_atypes[i]]
 
-    def append_atom(self, name: str, xyz: np.ndarray, atype: int, bonds: List[int] = None):
+    def append_atom(self, name: str, xyz: np.ndarray, atype: int, bonds: Sequence[int] = None):
         if atype in self.probe_types:
             self.probe_indices.append(self.n_atoms)
         self.n_atoms += 1
@@ -180,14 +180,14 @@ class StructXYZ:
             ret_str += f" {self.coords[atom_index][i]:.4f}"
         return ret_str
 
-    def write_key_old(self, fname: str, added_lines: List[str] = None):
+    def write_key_old(self, fname: str, added_lines: Sequence[str] = None):
         with open(self.key_file, 'r') as k:
             with open(fname, 'w') as f:
                 f.writelines(k.readlines())
                 f.writelines(added_lines)
 
     # TODO: Do this in less terrible fashion and merge w/ write_key
-    def write_key_old_neutral(self, fname: str, added_lines: List[str] = None):
+    def write_key_old_neutral(self, fname: str, added_lines: Sequence[str] = None):
         '''Writes a key file with optional additional lines while neutralizing non-probe electrostatics'''
         with open(self.key_file, 'r') as k:
             with open(fname, 'w') as f:

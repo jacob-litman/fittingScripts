@@ -7,14 +7,14 @@ import os
 import re
 from StructureXYZ import StructXYZ
 from JMLUtils import eprint, version_file
-from typing import List
+from typing import Sequence
 import scipy.optimize
 
 polar_patt = re.compile(r"^(polarize +)(\d+)( +)\d+\.\d+( +.+)$")
 
 
 def edit_keyf_polarize(x: np.ndarray, from_fi: str, to_file: str = None, clobber: bool = False,
-                       probe_types: List[int] = None) -> str:
+                       probe_types: Sequence[int] = None) -> str:
     if to_file is None:
         to_file = from_fi
     if not clobber or from_fi == to_file:
@@ -44,8 +44,8 @@ def edit_keyf_polarize(x: np.ndarray, from_fi: str, to_file: str = None, clobber
     return to_file
 
 
-def cost_fun(x: np.ndarray, qm_diffs: List[np.ndarray], mm_refs: List[np.ndarray], probe_files: List[StructXYZ], key_files: List[str] = None,
-             potential: str = 'potential', mol_pols: List[(float, float, float)] = None, wt_molpols: float = 0.0) -> float:
+def cost_fun(x: np.ndarray, qm_diffs: Sequence[np.ndarray], mm_refs: Sequence[np.ndarray], probe_files: Sequence[StructXYZ], key_files: Sequence[str] = None,
+             potential: str = 'potential', mol_pols: Sequence[(float, float, float)] = None, wt_molpols: float = 0.0) -> float:
     n_probe = len(qm_diffs)
     assert n_probe == len(mm_refs) and n_probe == len(probe_files)
     if key_files is None:
@@ -64,8 +64,8 @@ def cost_fun(x: np.ndarray, qm_diffs: List[np.ndarray], mm_refs: List[np.ndarray
     return tot_sq_diff
 
 
-def main_inner(tinker_path: str = '', gauss_path: str = '', probe_types: List[int] = None):
-    assert tinker_path is not None and gauss_path is not None
+def main_inner(tinker_path: str = '', probe_types: Sequence[int] = None):
+    assert tinker_path is not None
     if probe_types is None:
         probe_types = [999]
     # I will be fitting to <atom><ID>/qm_polarization.pot
@@ -77,11 +77,6 @@ def main_inner(tinker_path: str = '', gauss_path: str = '', probe_types: List[in
     if not tinker_path.endswith(os.sep) and tinker_path != '':
         tinker_path += os.sep
     potential = tinker_path + "potential"
-
-    if not gauss_path.endswith(os.sep) and gauss_path != '':
-        gauss_path += os.sep
-    formchk = gauss_path + "formchk"
-    cubegen = gauss_path + "cubegen"
 
     probe_diffs = []
     structures = []
@@ -100,25 +95,11 @@ def main_inner(tinker_path: str = '', gauss_path: str = '', probe_types: List[in
 
 def main():
     parser = argparse.ArgumentParser()
-    '''parser.add_argument('-a', dest='atom_index', type=int, required=True, help='Atom to place the probe near')
-    parser.add_argument('-n', dest='probe_name', type=str, default='PC', help='Atom name to give the probe')
-    parser.add_argument('-t', dest='probe_atype', type=int, default=999, help='Atom type to assign to the probe')
-    parser.add_argument('-d', dest='distance', type=float, default=4.0, help='Distance to place the probe at')
-    parser.add_argument('-w', dest='hydrogen_weight', type=float, default=0.4, help='Relative weighting for '
-                                                                                    'hydrogen distances')
-    parser.add_argument('-e', dest='exp', type=int, default=2, help='Exponent for the square of distance in target '
-                                                                    'function')
-    parser.add_argument('-k', dest='keyfile', type=str, default=None, help='Keyfile to use when saving to PDB')
-    parser.add_argument('-x', dest='xyzpdb', type=str, default='xyzpdb', help='Name or full path of Tinker '
-                                                                              'xyzpdb')
-    parser.add_argument('-o', dest='outfile', type=str, default=None, help='XYZ file to output (if none: '
-                                                                           'probe_atom<id>.xyz)')
-    parser.add_argument('infile', nargs=1, type=str)'''
-    
-
+    parser.add_argument('-t', dest='tinker_path', type=str, default='', help='Path to Tinker executables')
+    parser.add_argument('-p', dest='probe_type', type=int, default=999, help='Probe atom type')
     args = parser.parse_args()
-
-    main_inner()
+    
+    main_inner(tinker_path=args.tinker_path, probe_types=[args.probe_type])
 
 if __name__ == "__main__":
     main()
