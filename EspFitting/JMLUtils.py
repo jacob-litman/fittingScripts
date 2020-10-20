@@ -7,8 +7,11 @@ from typing import Sequence
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
 
 
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+def eprint(*args, kwargs: dict = None):
+    if kwargs is None:
+        kwargs = dict()
+    kwargs['file'] = sys.stderr
+    print(*args, **kwargs)
 
 
 def verbose_call(args: Sequence[str], kwargs = None, to_stderr: bool = True):
