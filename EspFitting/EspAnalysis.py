@@ -8,10 +8,37 @@ from JMLUtils import eprint, verbose_call, name_to_atom
 from typing import Sequence
 import SubPots
 
+# Files which the script expects to be present in CWD.
+dir_files = frozenset(('PR_NREF.key', 'QM_PR.key', 'QM_REF.com', 'QM_REF.chk'))
+# Files which the script expects to be present in all probe subdirectories.
+subdir_files = frozenset(('PR_NREF.key', 'PR_NREF.xyz', 'QM_PR.chk', 'QM_PR.com', 'QM_PR.key', 'QM_PR.xyz',
+                          'QM_REF.key'))
+
+
+def check_files_present(probe_dirs: Sequence[str]) -> Sequence[str]:
+    curr_files = [os.path.basename(f.name) for f in os.scandir('.')]
+    missing_files = []
+    for fi in dir_files:
+        if fi not in curr_files:
+            missing_files.append(fi)
+    for pd in probe_dirs:
+        curr_files = [os.path.basename(f.name) for f in os.scandir(pd)]
+        for fi in subdir_files:
+            if fi not in curr_files:
+                missing_files.append(f"{pd}{os.sep}{fi}")
+    return missing_files
+
 
 def main_inner(tinker_path: str = '', gauss_path: str = '', probe_types: Sequence[int] = None):
     assert tinker_path is not None and gauss_path is not None
     probe_dirs = [f.path for f in os.scandir(".") if (f.is_dir() and os.path.exists(f"{f.path}{os.sep}QM_PR.xyz"))]
+    
+    missing_files = check_files_present(probe_dirs)
+    if len(missing_files) > 0:
+        err_msg = "Error: required files not found:"
+        for mf in missing_files:
+            err_msg += f"\n{mf}"
+        raise FileNotFoundError(err_msg)
 
     if probe_types is None:
         probe_types = [999]
