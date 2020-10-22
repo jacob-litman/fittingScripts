@@ -1,6 +1,5 @@
 import subprocess
 import sys
-from io import TextIOWrapper
 
 import numpy as np
 import re
@@ -278,7 +277,7 @@ class StructXYZ:
             keyf = self.key_file
         if verbose:
             eprint(f"Calling (with input capture): potential 3 {self.in_file} {keyf} Y {keyf}")
-        sp_args = [potential, '3', self.in_file, keyf, 'Y', keyf]
+        sp_args = [potential, '3', self.in_file, "-k", keyf, 'Y']
         output = subprocess.check_output(sp_args)
         for line in output.splitlines():
             line = str(line, encoding=sys.getdefaultencoding()).strip()
@@ -287,5 +286,9 @@ class StructXYZ:
                 return esp_fi
         raise RuntimeError(f'Was unable to find the file electrostatic potential was written to for system {self}')
 
-    def get_esp(self, potential: str = 'potential', keyf: str = None) -> np.ndarray:
-        return np.genfromtxt(self.get_esp_file(potential=potential, keyf=keyf), skip_header=1, usecols=(1, 2, 3, 4))
+    def get_esp(self, potential: str = 'potential', keyf: str = None, delete_file: bool = True) -> np.ndarray:
+        esp_fi = self.get_esp_file(potential=potential, keyf=keyf)
+        esp_arr = np.genfromtxt(esp_fi, skip_header=1, usecols=(1, 2, 3, 4))
+        if delete_file:
+            os.remove(esp_fi)
+        return esp_arr

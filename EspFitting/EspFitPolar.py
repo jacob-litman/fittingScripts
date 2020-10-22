@@ -31,12 +31,12 @@ def read_initial_polarize(from_fi: str, probe_types: Sequence[int] = None) -> np
     return np.array(polarizabilities)
 
 
-def edit_keyf_polarize(x: np.ndarray, from_fi: str, to_file: str = None, clobber: bool = False,
-                       probe_types: Sequence[int] = None) -> str:
-    if to_file is None:
+def edit_keyf_polarize(x: np.ndarray, from_fi: str, to_file: str, probe_types: Sequence[int] = None):
+    '''if to_file is None:
         to_file = from_fi
     if not clobber or from_fi == to_file:
-        to_file = version_file(to_file)
+        to_file = version_file(to_file)'''
+    assert from_fi != to_file
     if probe_types is None:
         probe_types = [999]
 
@@ -60,32 +60,33 @@ def edit_keyf_polarize(x: np.ndarray, from_fi: str, to_file: str = None, clobber
                     pass
                 else:
                     w.write(line)
-    return to_file
 
 
-def cost_fun(x: np.ndarray, qm_diffs: Sequence[np.ndarray], mm_refs: Sequence[np.ndarray], probe_files: Sequence[StructXYZ], key_files: Sequence[str] = None,
-             potential: str = 'potential', mol_pols: np.ndarray = None, wt_molpols: float = 0.0) -> float:
+def cost_fun(x: np.ndarray, qm_diffs: Sequence[np.ndarray], mm_refs: Sequence[np.ndarray],
+             probe_files: Sequence[StructXYZ], to_files: Sequence[str], key_files: Sequence[str] = None,
+             potential: str = 'potential', mol_pols: np.ndarray = None, wt_molpols: float = 0.0) -> np.ndarray:
     n_probe = len(qm_diffs)
     assert n_probe == len(mm_refs) and n_probe == len(probe_files)
     if key_files is None:
         key_files = [pf.key_file for pf in probe_files]
-    curr_keyfiles = key_files.copy()
 
-    tot_sq_diff = 0
+    #tot_sq_diff = 0
+    residuals = []
     for i in range(n_probe):
-        keyf_i = edit_keyf_polarize(x, key_files[i], to_file=curr_keyfiles[i])
-        curr_keyfiles[i] = keyf_i
-        mm_diff = probe_files[i].get_esp(potential=potential, keyf=keyf_i)
+        edit_keyf_polarize(x, key_files[i], to_files[i])
+        mm_diff = probe_files[i].get_esp(potential=potential, keyf=to_files[i])
         mm_diff[:,3] -= mm_refs[i][:,3]
-        # eprint(f"mm diff: {mm_diff}")
-        # eprint(f"qm diff: {qm_diffs[i]}")
         # Assert that coordinates are equivalent. Can substitute in numpy.all_close
         assert np.array_equal(qm_diffs[i][:,0:2], mm_diff[:,0:2])
-        qm_mm_diff = np.square(qm_diffs[i][:,3] - mm_diff[:,3])
+        qm_mm_diff = qm_diffs[i][:,3] - mm_diff[:,3]
+        residuals.append(qm_mm_diff)
         # Use mean rather than sum so as to normalize across different grid sizes.
         # TODO: Use same grid for everything, and/or focal-point weighting.
-        tot_sq_diff += np.mean(qm_mm_diff)
-    return tot_sq_diff
+        #tot_sq_diff += np.mean(np.square(qm_mm_diff))
+    sys.stderr.flush()
+    sys.stdout.flush()
+    return np.concatenate(residuals)
+    #return tot_sq_diff
 
 
 def main_inner(tinker_path: str = '', probe_types: Sequence[int] = None):
@@ -107,6 +108,7 @@ def main_inner(tinker_path: str = '', probe_types: Sequence[int] = None):
     mm_refs = []
     pot_cols = (1, 2, 3, 4)
     for pd in probe_dirs:
+        eprint(f"Reading information for probe {pd}")
         # TODO: Consider changing dtype to np.float32 for improved performance. Assuming this is slow, anyways.
         # TODO: Consider using only column 4 to save memory (eliminates ability to check that X,Y,Z is identical).
         probe_diffs.append(np.genfromtxt(f"{pd}{os.sep}qm_polarization.pot", usecols=pot_cols, skip_header=1,
@@ -114,12 +116,15 @@ def main_inner(tinker_path: str = '', probe_types: Sequence[int] = None):
         mm_refs.append(np.genfromtxt(f"{pd}{os.sep}MM_REF_BACK.pot", usecols=pot_cols, skip_header=1, dtype=np.float64))
         structures.append(StructXYZ(f"{pd}{os.sep}QM_PR.xyz", probe_types=probe_types,
                                     key_file=f"{pd}{os.sep}QM_PR.key"))
+    key_files = [pf.key_file for pf in structures]
+    out_keys = [version_file(kf) for kf in key_files]
 
     x = read_initial_polarize(structures[0].key_file, probe_types=probe_types)
-    opt_kwargs = {'qm_diffs': probe_diffs, 'mm_refs': mm_refs, 'probe_files': structures, 'potential': potential}
+    opt_args = (probe_diffs, mm_refs, structures, out_keys, key_files, potential, None, 0.0)
     verbosity = 2
     bounds = (0, np.inf)
-    ls_result = scipy.optimize.least_squares(cost_fun, x, jac='3-point', kwargs=opt_kwargs, verbose=verbosity,
+    eprint("Read input polarizabilities: beginning optimization.")
+    ls_result = scipy.optimize.least_squares(cost_fun, x, jac='3-point', args=opt_args, verbose=verbosity,
                                              bounds=bounds)
     eprint(f'\n\nLeast squares result:\n{ls_result}')
 
