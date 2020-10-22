@@ -65,13 +65,14 @@ def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.Tex
                 sub_pot = float(psub_match.group(2))
                 if subtract:
                     this_diff = pot - sub_pot
+                    all_diffs.append(this_diff)
                 else:
                     this_diff = pot + sub_pot
-                all_diffs.append(this_diff)
                 out.write(f"{p1_match.group(1)}{this_diff:.6f}\n")
                 if do_focus:
                     toks = p1_match.group(1).strip().split()
-                    diff_xyz = (float(toks[1]) - focus_xyz[0], float(toks[2]) - focus_xyz[1], float(toks[3]) - focus_xyz[2])
+                    diff_xyz = (float(toks[1]) - focus_xyz[0], float(toks[2]) - focus_xyz[1],
+                                float(toks[3]) - focus_xyz[2])
                     dist2 = 0
                     for dx in diff_xyz:
                         dist2 += (dx * dx)
@@ -80,14 +81,16 @@ def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.Tex
                 # TODO: Assertion that psub_line otherwise patches p1_line
 
     if subtract:
+        pass
         all_arr = np.array(all_diffs)
         rms_all = math.sqrt(np.mean(np.square(all_arr)))
         mue_all = np.mean(np.abs(all_arr))
         mse_all = np.mean(all_arr)
         sd_all = np.std(all_arr, ddof=1)
 
-        err.write(f"Statistics over all {len(all_diffs):d} grid points: RMSD {rms_all:.6f}, MUE {mue_all:.6f}, MSE {mse_all:.6f}, SD {sd_all:.6f}\n")
-        if do_focus:
+        err.write(f"Statistics over all {len(all_diffs):d} grid points: RMSD {rms_all:.6f}, MUE {mue_all:.6f}, "
+                  f"MSE {mse_all:.6f}, SD {sd_all:.6f}\n")
+        if do_focus and len(focus_diffs) > 0:
             all_arr = np.array(focus_diffs)
             rms_all = math.sqrt(np.mean(np.square(all_arr)))
             mue_all = np.mean(np.abs(all_arr))

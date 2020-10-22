@@ -77,8 +77,8 @@ def cost_fun(x: np.ndarray, qm_diffs: Sequence[np.ndarray], mm_refs: Sequence[np
         curr_keyfiles[i] = keyf_i
         mm_diff = probe_files[i].get_esp(potential=potential, keyf=keyf_i)
         mm_diff[:,3] -= mm_refs[i][:,3]
-        eprint(f"mm diff: {mm_diff}")
-        eprint(f"qm diff: {qm_diffs[i]}")
+        # eprint(f"mm diff: {mm_diff}")
+        # eprint(f"qm diff: {qm_diffs[i]}")
         # Assert that coordinates are equivalent. Can substitute in numpy.all_close
         assert np.array_equal(qm_diffs[i][:,0:2], mm_diff[:,0:2])
         qm_mm_diff = np.square(qm_diffs[i][:,3] - mm_diff[:,3])
@@ -111,7 +111,7 @@ def main_inner(tinker_path: str = '', probe_types: Sequence[int] = None):
         # TODO: Consider using only column 4 to save memory (eliminates ability to check that X,Y,Z is identical).
         probe_diffs.append(np.genfromtxt(f"{pd}{os.sep}qm_polarization.pot", usecols=pot_cols, skip_header=1,
                                          dtype=np.float64))
-        mm_refs.append(np.genfromtxt(f"{pd}{os.sep}MM_REF.pot", usecols=pot_cols, skip_header=1, dtype=np.float64))
+        mm_refs.append(np.genfromtxt(f"{pd}{os.sep}MM_REF_BACK.pot", usecols=pot_cols, skip_header=1, dtype=np.float64))
         structures.append(StructXYZ(f"{pd}{os.sep}QM_PR.xyz", probe_types=probe_types,
                                     key_file=f"{pd}{os.sep}QM_PR.key"))
 
