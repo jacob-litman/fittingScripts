@@ -227,7 +227,8 @@ class StructXYZ:
                     line = k.readline()
                 f.writelines(added_lines)
 
-    def write_com(self, com_opts: ComOptions, fname: str = None, jname: str = None, probe_charge: float = 0.125):
+    def write_com(self, com_opts: ComOptions, fname: str = None, jname: str = None, probe_charge: float = 0.125,
+                  jtype: str = None):
         assert com_opts.rwf is not None
         if fname is None:
             fname = version_file(self.in_file)
@@ -239,6 +240,9 @@ class StructXYZ:
             f.write(f"%nproc={com_opts.nproc}\n")
             f.write(f"%Chk={com_opts.chk}\n")
             last_header = f"#{com_opts.method}/{com_opts.basis} "
+            if jtype is not None:
+                last_header += jtype
+                last_header += " "
             if com_opts.scf is not None:
                 last_header += f"SCF={com_opts.scf} "
             if com_opts.density is not None:

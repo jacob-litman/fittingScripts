@@ -41,7 +41,7 @@ def main():
     init_com_opts = ComOptions(args.charge, args.spin)
     jname = 'QM_REF'
     init_com_opts.chk = f"{jname}.chk"
-    xyz_in.write_com(com_opts=init_com_opts, fname='QM_REF.com', jname=jname)
+    xyz_in.write_com(com_opts=init_com_opts, fname='QM_REF.com', jname=jname, jtype='Polar')
     physical_atom_ids = [f"{xyz_in.atom_names[i]}{i+1}" for i in range(n_physical)]
     # TODO: Customize this via either poltype.ini or similar.
 
@@ -53,11 +53,6 @@ def main():
                 f'{probe_type[4]:>4d} {probe_type[5]:>9.3f}   {probe_type[6]:>2d}\n'
     vdw_out = f'vdw     {probe_type[1]:>5d}  0.0100   0.0000\n'
     polarize_out = f'polarize         {probe_type[0]:>5d}          0.0000     0.0100\n'
-    '''multipole   405  401  404              -0.08274
-                                        0.00000    0.00000    0.00000
-                                        0.00000
-                                        0.00000    0.00000
-                                        0.00000    0.00000    0.00000'''
     pc = args.probe_charge
     multipole_out = f'multipole {probe_type[0]:>5d}                     {pc:>11.5f}\n'
     multipole_out += "                                        0.00000    0.00000    0.00000\n"

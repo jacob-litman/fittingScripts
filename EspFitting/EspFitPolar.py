@@ -34,10 +34,6 @@ def read_initial_polarize(from_fi: str, probe_types: Sequence[int] = None) -> np
 
 
 def edit_keyf_polarize(x: np.ndarray, from_fi: str, to_file: str, probe_types: Sequence[int] = None):
-    '''if to_file is None:
-        to_file = from_fi
-    if not clobber or from_fi == to_file:
-        to_file = version_file(to_file)'''
     assert from_fi != to_file
     if probe_types is None:
         probe_types = [999]
