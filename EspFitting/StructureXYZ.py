@@ -5,6 +5,7 @@ import numpy as np
 import re
 from typing import Sequence
 from pathlib import Path
+from io import TextIOWrapper
 
 from ComOptions import ComOptions
 from JMLUtils import eprint, version_file, cryst_patt, verbose_call
@@ -15,12 +16,11 @@ adef_patt = re.compile(r'^atom +(\d+) +(\d+) +(\S+) +"?([^"]+)"? +(\d+) +(\d+\.\
 mpole_cont_patt = re.compile(r'^( +-?\d+\.\d+)+ *\\? *$')
 polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( [ 0-9]+ *)$')
 DEFAULT_PROBE_ATOM_NUM = 999
+DEFAULT_PSI4_ITERS = 300
+# TODO: Either use the periodictable package (Pip) or flesh this out.
 elements = {1: 'H', 2: 'HE',
             3: 'LI', 4: 'BE', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 10: 'NE',
             11: 'NA', 12: 'MG', 13: 'AL', 14: 'SI', 15: 'P', 16: 'S', 17: 'CL', 18: 'AR'}
-
-
-# TODO: Either use the periodictable package (Pip) or flesh this out.
 
 
 class StructXYZ:
@@ -59,7 +59,7 @@ class StructXYZ:
         if probe_types is None:
             self.probe_types = []
         else:
-            self.probe_types = probe_types.copy()
+            self.probe_types = list(probe_types)
             for i in range(self.n_atoms):
                 if self.assigned_atypes[i] in self.probe_types:
                     self.probe_indices.append(i)
@@ -227,11 +227,71 @@ class StructXYZ:
                     line = k.readline()
                 f.writelines(added_lines)
 
-    def write_com(self, com_opts: ComOptions, fname: str = None, jname: str = None, probe_charge: float = 0.125,
-                  jtype: str = None):
-        assert com_opts.rwf is not None
+    def write_qm_job(self, com_opts: ComOptions, fname: str = None, jname: str = None, probe_charge: float = 0.125) -> str:
         if fname is None:
-            fname = version_file(self.in_file)
+            fname = f"{os.path.splitext(self.in_file)[0]}_QM"
+            if jname is None:
+                jname = fname
+        elif jname is None:
+            jname = os.path.splitext(fname)[0]
+
+        if com_opts.program == 'PSI4':
+            if not fname.endswith('.psi4'):
+                fname += '.psi4'
+            self.write_psi4_input(com_opts, fname=fname, jname=jname, probe_charge=probe_charge)
+        elif com_opts.program.startswith('GAUSS'):
+            if not fname.endswith('.com'):
+                fname += '.com'
+            self.write_com(com_opts, fname=fname, jname=jname, probe_charge=probe_charge)
+        return fname
+
+    def write_coords(self, f: TextIOWrapper, com_opts: ComOptions):
+        f.write(f"{com_opts.charge} {com_opts.spin}\n")
+        for i in range(self.n_atoms):
+            if i in self.probe_indices:
+                # eprint(f"Atom is likely a probe: not written as an atom: {self.format_atom(i)}")
+                continue
+            el = self.get_atype_info(i)[4]
+            el_name = elements[el]
+            f.write(f"{el_name:>2s}")
+            for j in range(3):
+                f.write(f"{self.coords[i][j]:12.6f}")
+            f.write('\n')
+
+    def write_psi4_input(self, com_opts: ComOptions, fname: str, jname: str, probe_charge: float = 0.125):
+        assert com_opts.rwf is not None
+        if jname is None:
+            jname = f"{Path(fname).stem}_QM"
+        with open(fname, 'w') as f:
+            f.write("molecule {\n")
+            self.write_coords(f, com_opts=com_opts)
+            f.write("}\n\n")
+            f.write(f"memory {com_opts.mem}\n")
+            f.write(f"set_num_threads({com_opts.nproc})\n")
+            f.write(f'psi4_io.set_default_parameters("{com_opts.rwf}")\n')
+            f.write(f"set maxiter {DEFAULT_PSI4_ITERS}\n")
+            # Note: Gaussian does frozen-core by default.
+            f.write("set freeze_core True\n")
+            # Probably also Gaussian-default.
+            f.write('set PROPERTIES_ORIGIN ["COM"]\n\n')
+            if self.probe_indices is not None and len(self.probe_indices) > 0:
+                f.write('Chrgfield = QMMM()\n')
+                for pi in self.probe_indices:
+                    f.write(f'Chrgfield.extern.addCharge({probe_charge:f})')
+                    for i in range(3):
+                        f.write(f',{self.coords[pi][i]:.6f}')
+                    f.write(')\n')
+                f.write("psi4.set_global_option_python('EXTERN', Chrgfield.extern)\n")
+            f.write(f"E, wfn = energy('{com_opts.basis}',return_wfn=True)\n")
+            if com_opts.do_polar:
+                # Poltype apparently does the dipole calculation in the prior call, but this should be equivalent.
+                f.write("oeprop(wfn, 'DIPOLE', 'GRID_ESP', 'WIBERG_LOWDIN_INDICES', 'MULLIKEN_CHARGES')\n")
+            # TODO: Enable a Psi4-only pipeline by de-commenting the following line.
+            # f.write(f'fchk(wfn, "{jname}.fchk")\n')
+            f.write('clean()\n')
+
+    def write_com(self, com_opts: ComOptions, fname: str, jname: str, probe_charge: float = 0.125):
+        assert com_opts.rwf is not None
         if jname is None:
             jname = f"{Path(fname).stem}_QM"
         with open(fname, 'w') as f:
@@ -240,9 +300,8 @@ class StructXYZ:
             f.write(f"%nproc={com_opts.nproc}\n")
             f.write(f"%Chk={com_opts.chk}\n")
             last_header = f"#{com_opts.method}/{com_opts.basis} "
-            if jtype is not None:
-                last_header += jtype
-                last_header += " "
+            if com_opts.do_polar:
+                last_header += "Polar "
             if com_opts.scf is not None:
                 last_header += f"SCF={com_opts.scf} "
             if com_opts.density is not None:
@@ -256,17 +315,7 @@ class StructXYZ:
             last_header = last_header.rstrip()
             f.write(f"{last_header}\n\n")
             f.write(f"{jname}\n\n")
-            f.write(f"{com_opts.charge} {com_opts.spin}\n")
-            for i in range(self.n_atoms):
-                if i in self.probe_indices:
-                    # eprint(f"Atom is likely a probe: not written as an atom: {self.format_atom(i)}")
-                    continue
-                el = self.get_atype_info(i)[4]
-                el_name = elements[el]
-                f.write(f"{el_name:>2s}")
-                for j in range(3):
-                    f.write(f"{self.coords[i][j]:12.6f}")
-                f.write('\n')
+            self.write_coords(f, com_opts=com_opts)
 
             f.write('\n')
             if self.probe_indices is not None and len(self.probe_indices) > 0:

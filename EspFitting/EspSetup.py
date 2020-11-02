@@ -10,6 +10,7 @@ import shutil
 from ComOptions import ComOptions
 from StructureXYZ import StructXYZ
 from JMLUtils import eprint
+from OptionParser import OptParser
 
 def main():
     parser = argparse.ArgumentParser()
@@ -25,6 +26,8 @@ def main():
     parser.add_argument('-s', dest='spin', type=int, required=True, help='Spin of the molecule. REQUIRED.')
     parser.add_argument('-q', dest='probe_charge', type=float, default='0.125', help='Charge to assign to the probe')
     parser.add_argument('-t', dest='tinker_path', type=str, default='', help='Path to Tinker executables')
+    parser.add_argument('-o', dest='opts_file', type=str, default=None,
+                        help='File containing key=value properties: default locations: poltype.ini, espfit.ini')
 
     args = parser.parse_args()
     if args.inKey is None:
@@ -35,13 +38,15 @@ def main():
     else:
         keyf = args.inKey
     xyz_in = StructXYZ(args.infile, key_file=keyf)
+    opts = OptParser(args.opts_file)
     n_physical = xyz_in.n_atoms
 
     eprint("Step 1: writing reference .com file")
-    init_com_opts = ComOptions(args.charge, args.spin)
+    init_com_opts = ComOptions(args.charge, args.spin, opts=opts)
     jname = 'QM_REF'
     init_com_opts.chk = f"{jname}.chk"
-    xyz_in.write_com(com_opts=init_com_opts, fname='QM_REF.com', jname=jname, jtype='Polar')
+    init_com_opts.do_polar = True
+    xyz_in.write_qm_job(com_opts=init_com_opts, fname='QM_REF', jname=jname)
     physical_atom_ids = [f"{xyz_in.atom_names[i]}{i+1}" for i in range(n_physical)]
     # TODO: Customize this via either poltype.ini or similar.
 
@@ -77,7 +82,7 @@ def main():
         shutil.copy2('QM_PR.key', dirn)
         shutil.copy2(keyf, f"{dirn}QM_REF.key")
         xyz_in.coords[n_physical, :] = probe_locs[i, :]
-        xyz_in.write_com(probe_qm_opt, f"{dirn}QM_PR.com", "QM_PR", args.probe_charge)
+        xyz_in.write_qm_job(probe_qm_opt, f"{dirn}QM_PR.com", "QM_PR", args.probe_charge)
 
 
 if __name__ == "__main__":
