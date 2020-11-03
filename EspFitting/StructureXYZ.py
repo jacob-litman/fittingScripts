@@ -268,7 +268,7 @@ class StructXYZ:
             f.write("}\n\n")
             f.write(f"memory {com_opts.mem}\n")
             f.write(f"set_num_threads({com_opts.nproc})\n")
-            f.write(f'psi4_io.set_default_parameters("{com_opts.rwf}")\n')
+            f.write(f'psi4_io.set_default_path("{com_opts.rwf}")\n')
             f.write(f"set maxiter {DEFAULT_PSI4_ITERS}\n")
             # Note: Gaussian does frozen-core by default.
             f.write("set freeze_core True\n")
@@ -277,17 +277,31 @@ class StructXYZ:
             if self.probe_indices is not None and len(self.probe_indices) > 0:
                 f.write('Chrgfield = QMMM()\n')
                 for pi in self.probe_indices:
-                    f.write(f'Chrgfield.extern.addCharge({probe_charge:f})')
+                    f.write(f'Chrgfield.extern.addCharge({probe_charge:f}')
                     for i in range(3):
                         f.write(f',{self.coords[pi][i]:.6f}')
                     f.write(')\n')
                 f.write("psi4.set_global_option_python('EXTERN', Chrgfield.extern)\n")
-            f.write(f"E, wfn = energy('{com_opts.basis}',return_wfn=True)\n")
+
+            property_list = []
+            if com_opts.write_esp:
+                property_list.append('GRID_ESP')
+
+            f.write(f"E, wfn = energy('{com_opts.method}/{com_opts.basis},")
+            if len(property_list) > 0:
+                f.write("properties=[")
+                propstr = ""
+                for p in property_list:
+                    propstr += f"'{p}', "
+                f.write(re.sub(r', $', '', propstr))
+                f.write('],')
+            f.write('return_wfn=True)\n')
+
             if com_opts.do_polar:
-                # Poltype apparently does the dipole calculation in the prior call, but this should be equivalent.
-                f.write("oeprop(wfn, 'DIPOLE', 'GRID_ESP', 'WIBERG_LOWDIN_INDICES', 'MULLIKEN_CHARGES')\n")
+                eprint("Psi4 cannot calculate molecular polarizabilities for currently used methods (MP2, DFT); obtain "
+                       "these values separately!")
             # TODO: Enable a Psi4-only pipeline by de-commenting the following line.
-            # f.write(f'fchk(wfn, "{jname}.fchk")\n')
+            f.write(f'fchk(wfn, "{jname}.fchk")\n')
             f.write('clean()\n')
 
     def write_com(self, com_opts: ComOptions, fname: str, jname: str, probe_charge: float = 0.125):

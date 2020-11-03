@@ -9,7 +9,7 @@ import shutil
 
 from ComOptions import ComOptions
 from StructureXYZ import StructXYZ
-from JMLUtils import eprint
+from JMLUtils import eprint, verbose_call
 from OptionParser import OptParser
 
 def main():
@@ -41,7 +41,7 @@ def main():
     opts = OptParser(args.opts_file)
     n_physical = xyz_in.n_atoms
 
-    eprint("Step 1: writing reference .com file")
+    eprint("Step 1: writing reference QM input file")
     init_com_opts = ComOptions(args.charge, args.spin, opts=opts)
     jname = 'QM_REF'
     init_com_opts.chk = f"{jname}.chk"
@@ -69,11 +69,11 @@ def main():
     xyz_in.write_key_old('QM_PR.key', added_lines=addtl_lines)
     xyz_in.write_key_old_neutral('PR_NREF.key', added_lines=addtl_lines)
 
-    eprint("Step 3: placing probe!")
+    eprint("Step 3: placing probe")
     probe_locs = ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type, keyf='QM_PR.key')
 
-    eprint("Step 4: creating probe subdirectories.")
-    probe_qm_opt = ComOptions(args.charge, args.spin)
+    eprint("Step 4: creating probe subdirectories")
+    probe_qm_opt = ComOptions(args.charge, args.spin, opts=opts)
     probe_qm_opt.chk = "QM_PR.chk"
     for i, pid in enumerate(physical_atom_ids):
         dirn = f"{pid}{os.sep}"
@@ -82,7 +82,26 @@ def main():
         shutil.copy2('QM_PR.key', dirn)
         shutil.copy2(keyf, f"{dirn}QM_REF.key")
         xyz_in.coords[n_physical, :] = probe_locs[i, :]
-        xyz_in.write_qm_job(probe_qm_opt, f"{dirn}QM_PR.com", "QM_PR", args.probe_charge)
+        xyz_in.write_qm_job(probe_qm_opt, f"{dirn}QM_PR", "QM_PR", args.probe_charge)
+
+    if opts.options["program"].upper().startswith("GAUSS"):
+        grid_file = 'QM_REF.grid'
+        is_psi4 = False
+    elif opts.options["program"].upper().startswith("PSI4"):
+        grid_file = 'grid.dat'
+        is_psi4 = True
+    else:
+        raise ValueError("Could not determine if program in use is Gaussian or Psi4!")
+    tinker_path = args.tinker_path
+    if not tinker_path.endswith(os.sep) and tinker_path != '':
+        tinker_path += os.sep
+    potential = tinker_path + 'potential'
+    eprint(f"Step 5: linking {args.infile} to QM_REF.xyz and writing out {grid_file}")
+    os.symlink(args.infile, 'QM_REF.xyz')
+    os.symlink(keyf, 'QM_REF.key')
+    verbose_call([potential, '1', 'QM_REF.xyz', 'QM_REF.key'])
+    if is_psi4:
+        os.symlink('QM_REF.grid', grid_file)
 
 
 if __name__ == "__main__":

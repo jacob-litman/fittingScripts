@@ -28,6 +28,7 @@ class ComOptions:
         self.spin = spin
         self.program = DEFAULT_PROGRAM
         self.do_polar = False
+        self.write_esp = True
         if opts is not None:
             opd = opts.options
             self.storage = opd['maxdisk']

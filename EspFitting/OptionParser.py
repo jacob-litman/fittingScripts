@@ -1,11 +1,33 @@
 import re
 import os
+from enum import Enum, auto
 from JMLUtils import eprint
 
 DEFAULT_OPTIONS = {'numproc': '4', 'maxmem': '12GB', 'maxdisk': '100GB', 'espmethod': 'PBE0',
                    'espbasisset': 'aug-cc-pVTZ', 'program': 'psi4'}
 DEFAULT_FILENAMES = frozenset(['poltype.ini', 'espfit.ini'])
+# Below largely scraped from Gaussian documentation: http://gaussian.com/dft/
+KNOWN_DFT_TYPES = ["B3LYP", "B3P86", "B3PW91", "O3LYP", "AFPD", "AFP", "wB97XD", "LC-wHPBE", "CAM-B3LYP", "wB97",
+                   "wB97X", "MN15", "MN11", "SOGGA11X", "NI2SX", "MN12SX", "PW6B95", "PW6B95D3", "M08HX", "M06",
+                   "M06HF", "M062X", "M05", "M052X", "PBE0", "PBE1PBE", "HSEH1PBE", "OHSE2PBE", "OHSE1PBE", "PBEh1PBE",
+                   "B1B95", "B1LYP", "mPW1PW91", "mPW1LYP", "mPW1PBE", "mPW3PBE", "B98", "B971", "B972", "TPSSh",
+                   "tHCTHhyb", "BMK", "HISSbPBE", "X3LYP", "BHandH", "BHandHLYP"]
+scf_types = KNOWN_DFT_TYPES.copy()
+scf_types.append('HF')
+KNOWN_SCF_TYPES = frozenset(scf_types)
 
+class QMProgram(Enum):
+    GAUSSIAN = auto()
+    PSI4 = auto()
+
+def parse_qm_program(parsed: str, default_program: QMProgram = QMProgram.PSI4) -> QMProgram:
+    parsed = parsed.upper()
+    if parsed.startswith("GAUSS"):
+        return QMProgram.GAUSSIAN
+    elif parsed == "PSI4":
+        return QMProgram.PSI4
+    else:
+        return default_program
 
 class OptParser:
     def rectify_oddities(self):
@@ -38,3 +60,23 @@ class OptParser:
         else:
             eprint('No options file specified or found; default properties will be used!')
         self.rectify_oddities()
+
+    def is_psi4(self) -> bool:
+        return self.get_program() == QMProgram.PSI4
+
+    def get_program(self) -> QMProgram:
+        return parse_qm_program(self.options['program'])
+
+    def gauss_potential_type(self) -> str:
+        espm = re.sub(r'^R', '', self.options['espmethod'])
+        if espm.startswith("MP2"):
+            return "MP2"
+        elif espm.startswith("CI"):
+            return "CI"
+        elif espm.startswith("CC") or espm.startswith("QCI"):
+            return "CC"
+        elif espm in KNOWN_SCF_TYPES:
+            return "SCF"
+        else:
+            eprint(f"ESP method {self.options['espmethod']} is not recognized; defaulting to potential=SCF")
+            return "SCF"

@@ -5,6 +5,7 @@ import re
 from typing import Sequence, Dict, Mapping
 
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
+hartree = 627.5094736
 
 
 def eprint(*args, kwargs: dict = None):
