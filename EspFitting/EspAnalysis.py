@@ -11,17 +11,18 @@ from Psi4GridToPot import psi4_grid2pot
 import SubPots
 
 mpolar_patt = re.compile(r'^((?:multipole|polarize)\s+\d+\s+)\d+\.\d+(\s.+)?$')
+scr_patt = re.compile(r'^ *psi4_io.set_default_path\(["\'](.+)["\']\) *$')
 # Files which the script expects to be present in CWD.
+dir_files_psi4 = frozenset(('PR_NREF.key', 'QM_PR.key', 'QM_REF.psi4', 'QM_REF.fchk', 'grid_esp.dat', 'grid.dat'))
 dir_files_gauss = frozenset(('PR_NREF.key', 'QM_PR.key', 'QM_REF.com', 'QM_REF.chk'))
-dir_files_psi4 = frozenset(('PR_NREF.key', 'QM_PR.key', 'QM_REF.psi4', 'QM_REF.fchk'))
 # Files which the script expects to be present in all probe subdirectories.
 subdir_files_psi4 = frozenset(('PR_NREF.key', 'PR_NREF.xyz', 'QM_PR.fchk', 'QM_PR.psi4', 'QM_PR.key', 'QM_PR.xyz',
-                          'QM_REF.key', 'grid_esp.dat'))
+                          'QM_REF.key', 'grid.dat', 'grid_esp.dat'))
 subdir_files_gauss = frozenset(('PR_NREF.key', 'PR_NREF.xyz', 'QM_PR.chk', 'QM_PR.com', 'QM_PR.key', 'QM_PR.xyz',
                           'QM_REF.key'))
 
 
-def check_files_present(probe_dirs: FrozenSet[str], subdir_files: FrozenSet[str], dir_files: Sequence[str]) -> Sequence[str]:
+def check_files_present(probe_dirs: Sequence[str], dir_files: FrozenSet[str], subdir_files: FrozenSet[str]) -> Sequence[str]:
     curr_files = [os.path.basename(f.name) for f in os.scandir('.')]
     missing_files = []
     for fi in dir_files:
@@ -51,7 +52,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
     qm_pot = opts.gauss_potential_type()
     qm_method = f"{opts.options['espmethod']}/{opts.options['espbasisset']}"
 
-    missing_files = check_files_present(dir_files, subdir_files, probe_dirs)
+    missing_files = check_files_present(probe_dirs, dir_files, subdir_files)
     if len(missing_files) > 0:
         err_msg = "Error: required files not found:"
         for mf in missing_files:
@@ -69,9 +70,12 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         gauss_path += os.sep
     formchk = gauss_path + "formchk"
     cubegen = gauss_path + "cubegen"
+
     if not is_psi4:
         verbose_call([formchk, 'QM_REF.chk'])
     else:
+        eprint(f"Renaming grid_esp.dat to QM_REF.grid_esp.dat")
+        shutil.move('grid_esp.dat', 'QM_REF.grid_esp.dat')
         assert os.path.exists('QM_REF.fchk')
 
     for pdir in probe_dirs:
@@ -80,9 +84,15 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         at_name = re.sub(r"^\./", '', pdir)
         foc_atom = name_to_atom('QM_PR.xyz', at_name)
         eprint(f"Operating in directory {pdir}, atom {foc_atom[1]}{foc_atom[0]}\n")
+        if is_psi4:
+            esp_fi = 'QM_PR.grid_esp.dat'
+            eprint(f"Renaming {pdir}grid_esp.dat to {pdir}{esp_fi}")
+            shutil.move('grid_esp.dat', esp_fi)
+        else:
+            esp_fi = None
+            # Writes the grid file for cubegen
+            verbose_call([potential, "1", "QM_PR.xyz", 'QM_PR.key'])
 
-        # Writes the grid file for cubegen
-        verbose_call([potential, "1", "QM_PR.xyz", 'QM_PR.key'])
         # With Gaussian: format .chk to .fchk and run cubegen to get the QM ESP.
         # With Psi4: assert that both have already been done.
         # TODO: Support other QM packages.
@@ -93,9 +103,9 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
             # Convert .cube to .pot
             verbose_call([potential, "2", "QM_PR.cube"])
         else:
-            assert os.path.exists("QM_PR.fchk") and os.path.exists("grid_esp.dat") and os.path.exists("grid.dat")
-            eprint("Combining grid_esp.dat and grid.dat into QM_PR.pot")
-            psi4_grid2pot('QM_PR.pot', method=qm_method)
+            assert os.path.exists("QM_PR.fchk")
+            eprint(f"Combining {esp_fi} and grid.dat into QM_PR.pot")
+            psi4_grid2pot('QM_PR.pot', method=qm_method, esp=esp_fi)
 
         # Write out PR_NREF.pot (probe charge only potential)
         verbose_call([potential, "3", "PR_NREF.xyz", "Y"])
@@ -112,10 +122,20 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
             verbose_call([potential, "5", "QM_PR.xyz", "QM_PR_BACK.pot", "Y"], kwargs={'stdout': f})
 
         # Using the with-probe grid, write out the QM reference potential (no probe).
-        with open('QM_PR.grid', 'r') as f:
-            verbose_call([cubegen, '0', 'potential=MP2', 'QM_REF.fchk', 'QM_REF.cube', '-5', 'h'], kwargs={'stdin': f})
-        # Convert .cube to .pot.
-        verbose_call([potential, '2', 'QM_REF.cube'])
+        if not is_psi4:
+            with open('QM_PR.grid', 'r') as f:
+                verbose_call([cubegen, '0', 'potential=MP2', 'QM_REF.fchk', 'QM_REF.cube', '-5', 'h'], kwargs={'stdin': f})
+            # Convert .cube to .pot.
+            verbose_call([potential, '2', 'QM_REF.cube'])
+        else:
+            eprint("Generating QM_REF_PRGRID.grid_esp.dat")
+            scrdir = opts.get_program().get_scrdir()
+            with open('QM_REF_PRGRID.psi4', 'w') as w:
+                w.write(f"memory 8GB\nset_num_threads(4)\npsi4_io.set_default_path({scrdir})\n")
+                w.write('set maxiter 300\nset freeze_core True\nset PROPERTIES_ORIGIN ["COM"]\n\n')
+                w.write(f"wfn = psi4.core.Wavefunction.from_file('QM_REF.npy')\n")
+                w.write('oeprop(wfn, "GRID_ESP")\n')
+                w.write('clean()\n')
 
         # Calculate the effect of polarization and write to .pot (QM).
         eprint("Writing out QM polarization of ESP to qm_polarization.pot")

@@ -3,15 +3,20 @@ import os
 import subprocess
 import re
 from typing import Sequence, Dict, Mapping
+from enum import Enum, auto
 
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
 hartree = 627.5094736
 
 
 def eprint(*args, kwargs: dict = None):
+    """Prints to stderr; effectively wraps the print() function with kwargs['file'] = sys.stderr, and kwargs['flush'] =
+    True unless already defined in kwargs."""
     if kwargs is None:
         kwargs = dict()
     kwargs['file'] = sys.stderr
+    if 'flush' not in kwargs:
+        kwargs['flush'] = True
     print(*args, **kwargs)
 
 
@@ -100,3 +105,44 @@ def log_audit_files(files: Dict[str, float], about: str):
         files[a] = t
     eprint("\n")
 log_audit_files.n_log_audit = 0
+
+
+class QMProgram(Enum):
+    GAUSSIAN = tuple("GAUSS_SCRDIR")
+    PSI4 = tuple("PSI4_SCRATCH")
+
+    def get_scrdir_name(self) -> str:
+        return self.value[0]
+
+    def get_scrdir(self, fallback_scrdir: str = None) -> str:
+        own_varname = self.get_scrdir_name()
+        scrdir = os.environ.get(own_varname)
+        if scrdir is None:
+            for qmp in QMProgram:
+                qmp_varname = qmp.get_scrdir_name()
+                scrdir = os.environ.get(qmp_varname)
+                if scrdir is not None:
+                    eprint(f"WARNING: Failed to find environment variable {own_varname}; falling back to {qmp_varname} "
+                           f"with value {scrdir}")
+                    return scrdir
+        else:
+            return scrdir
+
+        if scrdir is None:
+            if fallback_scrdir is None:
+                raise ValueError(f"ERROR: Could not find environment variable {own_varname} nor any fallback "
+                                 f"environment variables.")
+            else:
+                eprint(f"WARNING: Could not find environment variable {own_varname} nor any fallback environment "
+                       f"variables: falling back to provided scratch directory {fallback_scrdir}")
+                return fallback_scrdir
+
+
+def parse_qm_program(parsed: str, default_program: QMProgram = QMProgram.PSI4) -> QMProgram:
+    parsed = parsed.upper()
+    if parsed.startswith("GAUSS"):
+        return QMProgram.GAUSSIAN
+    elif parsed == "PSI4":
+        return QMProgram.PSI4
+    else:
+        return default_program

@@ -38,6 +38,7 @@ class ComOptions:
             self.basis = opd['espbasisset']
             self.program = opd['program']
 
+        self.program = self.program.upper()
         if self.program.startswith('GAUSS'):
             scrdir = os.environ.get("GAUSS_SCRDIR")
             if scrdir is None:
@@ -60,3 +61,15 @@ class ComOptions:
                 # TODO: Raise appropriate Error.
             else:
                 self.rwf = f"{scrdir.rstrip('/')}{os.sep}{DEFAULT_SCRATCH_SUBDIR}{os.sep}"
+
+    def set_chk(self, basechk: str = None) -> str:
+        if basechk is None:
+            basechk = self.chk
+        if self.program.upper().startswith("GAUSS"):
+            self.chk = basechk + ".chk"
+        elif self.program.upper() == "PSI4":
+            self.chk = basechk + ".npy"
+        else:
+            eprint("WARNING: Unrecognized program in set_chk: defaulting to Psi4-style .npy file!")
+            self.chk = basechk + ".npy"
+        return self.chk

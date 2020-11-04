@@ -41,11 +41,24 @@ def main():
     opts = OptParser(args.opts_file)
     n_physical = xyz_in.n_atoms
 
+    if opts.options["program"].upper().startswith("GAUSS"):
+        grid_file = 'QM_REF.grid'
+        is_psi4 = False
+    elif opts.options["program"].upper().startswith("PSI4"):
+        grid_file = 'grid.dat'
+        is_psi4 = True
+    else:
+        raise ValueError("Could not determine if program in use is Gaussian or Psi4!")
+
     eprint("Step 1: writing reference QM input file")
     init_com_opts = ComOptions(args.charge, args.spin, opts=opts)
     jname = 'QM_REF'
-    init_com_opts.chk = f"{jname}.chk"
+    if is_psi4:
+        init_com_opts.chk = f"{jname}.npy"
+    else:
+        init_com_opts.chk = f"{jname}.chk"
     init_com_opts.do_polar = True
+    init_com_opts.write_esp = True
     xyz_in.write_qm_job(com_opts=init_com_opts, fname='QM_REF', jname=jname)
     physical_atom_ids = [f"{xyz_in.atom_names[i]}{i+1}" for i in range(n_physical)]
     # TODO: Customize this via either poltype.ini or similar.
@@ -74,7 +87,12 @@ def main():
 
     eprint("Step 4: creating probe subdirectories")
     probe_qm_opt = ComOptions(args.charge, args.spin, opts=opts)
-    probe_qm_opt.chk = "QM_PR.chk"
+    probe_qm_opt.write_esp = True
+    if is_psi4:
+        probe_qm_opt.chk = "QM_PR.npy"
+    else:
+        probe_qm_opt.chk = "QM_PR.chk"
+
     for i, pid in enumerate(physical_atom_ids):
         dirn = f"{pid}{os.sep}"
         shutil.copy2(f"{dirn}QM_PR.xyz", f"{dirn}PR_NREF.xyz")
@@ -82,16 +100,18 @@ def main():
         shutil.copy2('QM_PR.key', dirn)
         shutil.copy2(keyf, f"{dirn}QM_REF.key")
         xyz_in.coords[n_physical, :] = probe_locs[i, :]
-        xyz_in.write_qm_job(probe_qm_opt, f"{dirn}QM_PR", "QM_PR", args.probe_charge)
+        if is_psi4:
+            extra_headers = ['import shutil']
+            extra_footers = ['wfn2 = psi4.core.Wavefunction.from_file("../QM_REF.npy")',
+                             'shutil.move("grid_esp.dat", "QM_PR.grid_esp.dat")',
+                             'oeprop(wfn2, "GRID_ESP")',
+                             'shutil.move("grid_esp.dat", "QM_REF.grid_esp.dat")']
+        else:
+            extra_headers = None
+            extra_footers = None
+        xyz_in.write_qm_job(probe_qm_opt, f"{dirn}QM_PR", "QM_PR", args.probe_charge, header_lines=extra_headers,
+                            footer_lines=extra_footers)
 
-    if opts.options["program"].upper().startswith("GAUSS"):
-        grid_file = 'QM_REF.grid'
-        is_psi4 = False
-    elif opts.options["program"].upper().startswith("PSI4"):
-        grid_file = 'grid.dat'
-        is_psi4 = True
-    else:
-        raise ValueError("Could not determine if program in use is Gaussian or Psi4!")
     tinker_path = args.tinker_path
     if not tinker_path.endswith(os.sep) and tinker_path != '':
         tinker_path += os.sep
@@ -102,6 +122,17 @@ def main():
     verbose_call([potential, '1', 'QM_REF.xyz', 'QM_REF.key'])
     if is_psi4:
         os.symlink('QM_REF.grid', grid_file)
+
+    if not is_psi4:
+        grid_file = 'QM_PR.grid'
+    eprint(f"Step 6: Writing out {grid_file} in probe subdirectories")
+    for pid in physical_atom_ids:
+        dirn = f"{pid}{os.sep}"
+        os.chdir(dirn)
+        verbose_call([potential, '1', 'QM_PR.xyz', 'QM_PR.key'])
+        if is_psi4:
+            os.symlink('QM_PR.grid', grid_file)
+        os.chdir("..")
 
 
 if __name__ == "__main__":

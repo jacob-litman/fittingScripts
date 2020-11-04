@@ -227,7 +227,10 @@ class StructXYZ:
                     line = k.readline()
                 f.writelines(added_lines)
 
-    def write_qm_job(self, com_opts: ComOptions, fname: str = None, jname: str = None, probe_charge: float = 0.125) -> str:
+    def write_qm_job(self, com_opts: ComOptions, fname: str = None, jname: str = None, probe_charge: float = 0.125,
+                     header_lines: Sequence[str] = None, footer_lines: Sequence[str] = None,
+                     write_fchk: bool = False) -> str:
+        """Writes a QM job (either .com for Gaussian or .psi4 for Psi4) based on this structure"""
         if fname is None:
             fname = f"{os.path.splitext(self.in_file)[0]}_QM"
             if jname is None:
@@ -238,11 +241,11 @@ class StructXYZ:
         if com_opts.program == 'PSI4':
             if not fname.endswith('.psi4'):
                 fname += '.psi4'
-            self.write_psi4_input(com_opts, fname=fname, jname=jname, probe_charge=probe_charge)
+            self.write_psi4_input(com_opts, fname=fname, jname=jname, probe_charge=probe_charge, header_lines=header_lines, footer_lines=footer_lines, write_fchk=write_fchk)
         elif com_opts.program.startswith('GAUSS'):
             if not fname.endswith('.com'):
                 fname += '.com'
-            self.write_com(com_opts, fname=fname, jname=jname, probe_charge=probe_charge)
+            self.write_com(com_opts, fname=fname, jname=jname, probe_charge=probe_charge, header_lines=header_lines, footer_lines=footer_lines, write_fchk=write_fchk)
         return fname
 
     def write_coords(self, f: TextIOWrapper, com_opts: ComOptions):
@@ -258,11 +261,19 @@ class StructXYZ:
                 f.write(f"{self.coords[i][j]:12.6f}")
             f.write('\n')
 
-    def write_psi4_input(self, com_opts: ComOptions, fname: str, jname: str, probe_charge: float = 0.125):
+    def write_psi4_input(self, com_opts: ComOptions, fname: str, jname: str, probe_charge: float = 0.125,
+                         header_lines: Sequence[str] = None, footer_lines: Sequence[str] = None,
+                         write_fchk: bool = False):
         assert com_opts.rwf is not None
         if jname is None:
             jname = f"{Path(fname).stem}_QM"
         with open(fname, 'w') as f:
+            if header_lines is not None:
+                for line in header_lines:
+                    f.write(line)
+                    f.write('\n')
+                f.write('\n')
+
             f.write("molecule {\n")
             self.write_coords(f, com_opts=com_opts)
             f.write("}\n\n")
@@ -286,33 +297,66 @@ class StructXYZ:
             property_list = []
             if com_opts.write_esp:
                 property_list.append('GRID_ESP')
-
-            f.write(f"E, wfn = energy('{com_opts.method}/{com_opts.basis},")
-            if len(property_list) > 0:
-                f.write("properties=[")
-                propstr = ""
-                for p in property_list:
-                    propstr += f"'{p}', "
-                f.write(re.sub(r', $', '', propstr))
-                f.write('],')
-            f.write('return_wfn=True)\n')
-
             if com_opts.do_polar:
                 eprint("Psi4 cannot calculate molecular polarizabilities for currently used methods (MP2, DFT); obtain "
                        "these values separately!")
-            # TODO: Enable a Psi4-only pipeline by de-commenting the following line.
-            f.write(f'fchk(wfn, "{jname}.fchk")\n')
-            f.write('clean()\n')
 
-    def write_com(self, com_opts: ComOptions, fname: str, jname: str, probe_charge: float = 0.125):
+            read_chk = False
+            if com_opts.chk is not None and os.path.exists(com_opts.chk):
+                read_chk = True
+                f.write(f"wfn = psi4.core.Wavefunction.from_file({com_opts.chk})\n")
+                if len(property_list) > 0:
+                    f.write(f'oeprop(wfn')
+                    for p in property_list:
+                        f.write(f', {p}')
+                    f.write(')\n')
+                else:
+                    eprint(f"WARNING: Wavefunction file {com_opts.chk} found, but no properties are specified!")
+                    f.write('wfn.compute_energy()\n')
+            elif len(property_list) > 0:
+                f.write(f"E, wfn = properties('{com_opts.method}/{com_opts.basis}', ")
+                f.write("properties=[")
+                pstr = ""
+                for p in property_list:
+                    pstr += f"'{p}', "
+                f.write(re.sub(r', $', '], ', pstr))
+                f.write('return_wfn=True)\n')
+            else:
+                f.write(f"E, wfn = energy('{com_opts.method}/{com_opts.basis}, return_wfn=True)\n")
+
+            if write_fchk:
+                f.write(f'fchk(wfn, "{jname}.fchk")\n')
+
+            if com_opts.chk is not None:
+                if read_chk:
+                    eprint(f"NOTE: Over-writing {com_opts.chk} with newly computed wavefunction (if any).")
+                f.write(f"wfn.to_file('{com_opts.chk}')\n")
+
+            if footer_lines is not None:
+                f.write('\n')
+                for line in footer_lines:
+                    f.write(line)
+                    f.write('\n')
+
+            f.write('\nclean()\n')
+
+    def write_com(self, com_opts: ComOptions, fname: str, jname: str, probe_charge: float = 0.125,
+                  header_lines: Sequence[str] = None, footer_lines: Sequence[str] = None, write_fchk: bool = False):
         assert com_opts.rwf is not None
+
+        if header_lines is not None or footer_lines is not None:
+            eprint("WARNING: Writing of Gaussian files (.com) currently doesn't support additional header/footer lines!")
+        if write_fchk:
+            eprint("WARNING: Use the formchk executable separately to write out .fchk files!")
+
         if jname is None:
             jname = f"{Path(fname).stem}_QM"
         with open(fname, 'w') as f:
             f.write(f"%rwf={com_opts.rwf},{com_opts.storage}\n")
             f.write(f"%mem={com_opts.mem}\n")
             f.write(f"%nproc={com_opts.nproc}\n")
-            f.write(f"%Chk={com_opts.chk}\n")
+            if com_opts.chk is not None:
+                f.write(f"%Chk={com_opts.chk}\n")
             last_header = f"#{com_opts.method}/{com_opts.basis} "
             if com_opts.do_polar:
                 last_header += "Polar "
