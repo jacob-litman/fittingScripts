@@ -59,7 +59,7 @@ def main():
         init_com_opts.chk = f"{jname}.chk"
     init_com_opts.do_polar = True
     init_com_opts.write_esp = True
-    xyz_in.write_qm_job(com_opts=init_com_opts, fname='QM_REF', jname=jname)
+    xyz_in.write_qm_job(com_opts=init_com_opts, fname='QM_REF', jname=jname, write_fchk=True)
     physical_atom_ids = [f"{xyz_in.atom_names[i]}{i+1}" for i in range(n_physical)]
     # TODO: Customize this via either poltype.ini or similar.
 
@@ -110,7 +110,7 @@ def main():
             extra_headers = None
             extra_footers = None
         xyz_in.write_qm_job(probe_qm_opt, f"{dirn}QM_PR", "QM_PR", args.probe_charge, header_lines=extra_headers,
-                            footer_lines=extra_footers)
+                            footer_lines=extra_footers, write_fchk=True)
 
     tinker_path = args.tinker_path
     if not tinker_path.endswith(os.sep) and tinker_path != '':
