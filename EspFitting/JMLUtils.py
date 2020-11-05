@@ -2,7 +2,7 @@ import sys
 import os
 import subprocess
 import re
-from typing import Sequence, Dict, Mapping
+from typing import Sequence, Dict, Mapping, List
 from enum import Enum, auto
 
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
@@ -105,6 +105,10 @@ def log_audit_files(files: Dict[str, float], about: str):
         files[a] = t
     eprint("\n")
 log_audit_files.n_log_audit = 0
+
+
+def get_probe_dirs() -> List[str]:
+    return [f.path for f in os.scandir(".") if (f.is_dir() and os.path.exists(f"{f.path}{os.sep}QM_PR.xyz"))]
 
 
 class QMProgram(Enum):

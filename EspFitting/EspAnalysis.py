@@ -4,7 +4,7 @@ import argparse
 import os
 import shutil
 import re
-from JMLUtils import eprint, verbose_call, name_to_atom
+from JMLUtils import eprint, verbose_call, name_to_atom, get_probe_dirs
 from OptionParser import OptParser
 from typing import Sequence, FrozenSet
 from Psi4GridToPot import psi4_grid2pot
@@ -38,7 +38,7 @@ def check_files_present(probe_dirs: Sequence[str], dir_files: FrozenSet[str], su
 
 def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', probe_types: Sequence[int] = None):
     assert tinker_path is not None and gauss_path is not None
-    probe_dirs = [f.path for f in os.scandir(".") if (f.is_dir() and os.path.exists(f"{f.path}{os.sep}QM_PR.xyz"))]
+    probe_dirs = get_probe_dirs()
 
     if opts.is_psi4():
         is_psi4 = True
