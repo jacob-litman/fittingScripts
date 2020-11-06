@@ -119,7 +119,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
             psi4_grid2pot('QM_REF.pot', method=qm_method, esp='QM_REF.grid_esp.dat')
         else:
             with open('QM_PR.grid', 'r') as f:
-                verbose_call([cubegen, '0', 'potential=MP2', 'QM_REF.fchk', 'QM_REF.cube', '-5', 'h'], kwargs={'stdin': f})
+                verbose_call([cubegen, '0', f'potential={qm_pot}', 'QM_REF.fchk', 'QM_REF.cube', '-5', 'h'], kwargs={'stdin': f})
             # Convert .cube to .pot.
             verbose_call([potential, '2', 'QM_REF.cube'])
 
