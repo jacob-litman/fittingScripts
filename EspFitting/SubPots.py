@@ -6,6 +6,7 @@ import math
 import numpy as np
 import io
 from JMLUtils import eprint
+import scipy.stats
 
 DEFAULT_RADIUS = 2.5
 
@@ -15,7 +16,8 @@ def main():
         # TODO: Restore effective scriptiness (i.e. all arguments).
         eprint("Must have two arguments (potential files to add together).\n")
         sys.exit(1)
-    main_inner(sys.argv[1], sys.argv[2])
+    else:
+        main_inner(sys.argv[1], sys.argv[2], subtract=True)
 
 
 def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.TextIOWrapper = sys.stderr,
@@ -81,7 +83,6 @@ def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.Tex
                 # TODO: Assertion that psub_line otherwise patches p1_line
 
     if subtract:
-        pass
         all_arr = np.array(all_diffs)
         rms_all = math.sqrt(np.mean(np.square(all_arr)))
         mue_all = np.mean(np.abs(all_arr))

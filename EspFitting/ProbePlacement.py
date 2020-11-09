@@ -8,7 +8,7 @@ from math import pi
 import numpy as np
 import scipy.optimize
 
-from JMLUtils import eprint
+from JMLUtils import eprint, dist2
 from StructureXYZ import StructXYZ
 
 DEFAULT_HWT = 0.4
@@ -17,10 +17,6 @@ DEFAULT_OUTFILE = 'probe'
 DEFAULT_PROBE_DESC = "Probe Charge        "
 DEFAULT_EXP = 3
 DEFAULT_PROBE_TYPE = 999
-
-
-def dist2(coord1: np.ndarray, coord2: np.ndarray) -> float:
-    return np.square(np.array(coord1) - np.array(coord2)).sum()
 
 
 def to_cartesian(x: np.ndarray, r: float) -> (np.ndarray, float, float, float, float):

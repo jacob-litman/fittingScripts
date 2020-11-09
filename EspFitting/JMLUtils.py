@@ -4,6 +4,7 @@ import subprocess
 import re
 from typing import Sequence, Dict, Mapping, List
 from enum import Enum, auto
+import numpy as np
 
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
 hartree = 627.5094736
@@ -105,6 +106,10 @@ def log_audit_files(files: Dict[str, float], about: str):
         files[a] = t
     eprint("\n")
 log_audit_files.n_log_audit = 0
+
+
+def dist2(coord1: np.ndarray, coord2: np.ndarray) -> float:
+    return np.square(np.array(coord1) - np.array(coord2)).sum()
 
 
 def get_probe_dirs() -> List[str]:

@@ -14,8 +14,8 @@ def main_inner(probe_name: str, in_name: str = None, out_name: str = "all_probes
         for dir in probe_dirs:
             pdb_files.extend([fi.name for fi in os.scandir(dir) if (fi.is_file() and fi.name.ends_with(".pdb"))])
     else:
-        pdb_files = filter(lambda fi: os.path.exists(fi) and os.path.isfile(fi),
-                           [f'{pd}{os.sep}{in_name}' for pd in probe_dirs])
+        pdb_files = list(filter(lambda fi: os.path.exists(fi) and os.path.isfile(fi), [f'{pd}{os.sep}{in_name}'
+                                                                                       for pd in probe_dirs]))
     assert len(pdb_files) > 0
 
     base_atom_lines = []
@@ -54,7 +54,6 @@ def main_inner(probe_name: str, in_name: str = None, out_name: str = "all_probes
     with open(out_name, 'w') as w:
         for line in base_atom_lines:
             w.write(line)
-            w.write('\n')
         for pdbf in pdb_files:
             with open(pdbf, 'r') as r:
                 at_ctr = 0
@@ -67,7 +66,7 @@ def main_inner(probe_name: str, in_name: str = None, out_name: str = "all_probes
                             max_atom_num += 1
                             max_res_num += 1
                             w.write(f'HETATM{max_atom_num:>5d}{line[11:21]}{out_chain}{max_res_num:>4d}'
-                                    f'{line[26:]}\n')
+                                    f'{line[26:]}')
                         else:
                             if not line == base_atom_lines[at_ctr]:
                                 eprint(f"WARNING: Non-probe atom {at_ctr + 1} of file {pdbf} does not match atom "
@@ -85,7 +84,6 @@ def main_inner(probe_name: str, in_name: str = None, out_name: str = "all_probes
 
         for line in base_conect_lines:
             w.write(line)
-            w.write('\n')
         w.write('END\n')
 
 
@@ -96,16 +94,6 @@ def main():
                                                                              'files to read.')
     args = parser.parse_args()
     main_inner(args.probe_name, in_name=args.file_name)
-
-    '''parser = argparse.ArgumentParser()
-    parser.add_argument('-p', dest='probe_type', type=int, default=999, help='Probe atom type')
-    parser.add_argument('-t', dest='tinker_path', type=str, default='', help='Path to Tinker executables')
-    parser.add_argument('-g', dest='gauss_path', type=str, default='', help='Path to Gaussian executables')
-    parser.add_argument('-o', dest='opts_file', type=str, default=None,
-                        help='File containing key=value properties: default locations: poltype.ini, espfit.ini')
-    args = parser.parse_args()
-    opts = OptParser(args.opts_file)
-    main_inner(opts, tinker_path=args.tinker_path, gauss_path=args.gauss_path, probe_types=[args.probe_type])'''
 
 if __name__ == "__main__":
     main()
