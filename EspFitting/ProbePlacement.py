@@ -32,94 +32,105 @@ def to_cartesian(x: np.ndarray, r: float) -> (np.ndarray, float, float, float, f
     return cart, sin_t, cos_t, sin_p, cos_p
 
 
-def cost_gradient(x, weights: np.ndarray, x_all: np.ndarray, ind_center: int, r: float, exp: int = DEFAULT_EXP) -> (
-        float, np.ndarray):
-    assert weights.ndim == 1 and x_all.ndim == 2 and x.ndim == 1 and x.shape[0] == 2
-    len_x = x_all.shape[0]
-    assert len_x == weights.shape[0]
-
-    (probe_cart, sin_t, cos_t, sin_p, cos_p) = to_cartesian(x, r)
-    probe_cart = np.add(probe_cart, x_all[ind_center])
-
-    dxdt = r * cos_t * cos_p
-    dxdp = -1 * r * sin_t * sin_p
-    dydt = r * cos_t * sin_p
-    dydp = r * sin_t * cos_p
-    dzdt = -1 * r * sin_t
-    # dzdp == 0
-
-    tot_penalty = 0
-    grad = np.zeros_like(x)
-    for i in range(len_x):
-        if i == ind_center:
-            continue
-        xi = x_all[i]
-        d2 = dist2(probe_cart, xi)
-        tot_penalty += (weights[i] / d2 ** exp)
-        const = -1 * exp * weights[i] / (d2 ** (exp + 1))
-
-        d0 = probe_cart[0] - xi[0]
-        d1 = probe_cart[1] - xi[1]
-        d2 = probe_cart[2] - xi[2]
-
-        dmdt = 2 * d0 * dxdt
-        dmdt += 2 * d1 * dydt
-        dmdt += 2 * d2 * dzdt
-        grad[0] += (dmdt * const)
-        dmdp = 2 * d0 * dxdp
-        dmdp += 2 * d1 * dydp
-        # dzdp == 0, so that whole term is zero.
-        grad[1] += (dmdp * const)
-    return tot_penalty, grad
+# Following would be variables to cache the Hessian.
+#last_x = None
+#last_hess = None
 
 
-def calc_drdk(dists: np.ndarray, unitvec: np.ndarray, r: float) -> float:
-    drdk = 0
+def cost_jac_inner(negative: bool, rm2: float, bound_dist: float, i: int, weights: np.ndarray, exp: int,
+               rv: np.ndarray) -> (float, np.ndarray):
+    r = math.sqrt(rm2)    
+    if negative:
+        pen_dist = bound_dist - r
+    else:
+        pen_dist = r - bound_dist
+    e = weights[i] * (pen_dist ** exp)
+    
+    # Compute gradient.
+    exp1 = exp - 1
+    r_inv = 1.0 / r
+    grad = np.empty(3, float)
+    r_grad = np.empty_like(grad)
+    const_grad = weights[i] * exp
+
+    # Commented code is only needed for computing the Hessian, but I'm not sure there's an elegant way to get Scipy to
+    # use one method call for value, Jacobian and Hessian.
+    """# exp2 and const_lhs only needed for Hessian: computed here to have only one if-negative branch.
+    exp2 = exp - 2
+    const_lhs = exp1 * (pen_dist ** exp2)"""
+    if negative:
+        const_grad *= -1
+        # const_lhs *= -1
+        
+    lhs_grad = pen_dist ** exp1
     for j in range(3):
-        drdk += (dists[j] * unitvec[j])
-    drdk /= r
-    return drdk
+        r_grad[j] = rv[j] * r_inv
+        grad[j] = const_grad * lhs_grad * r_grad[j]
+
+    """# Compute the Hessian.
+    hess = np.empty((3, 3), float)
+    r_hess = np.empty_like(hess)
+    r_inv3 = r_inv * r_inv * r_inv
+    for j in range(3):
+        for k in range(3):
+            r_hess[j][k] = -1 * rv[j] * rv[k] * r_inv3
+            if j == k:
+                r_hess[j][k] += r_inv
+            hess_jk = const_lhs * r_grad[j] * r_grad[k]
+            hess_jk += lhs_grad * r_hess[j][k]
+            hess_jk *= const_grad
+            hess[j][k] = hess_jk
+    return e, grad, hess"""
+    return e, grad
 
 
-def linear_costgrad(x, weights: np.ndarray, x_all: np.ndarray, ind_center: int, unitvec: np.ndarray,
-                    exp: int = 1, min_bound: float = 4.0, max_bound: float = 5.0) -> (float, np.ndarray):
-    assert weights.ndim == 1 and x_all.ndim == 2 and x.ndim == 1 and x.shape[0] == 2
-    assert len(unitvec) == 3
-    len_x = x_all.shape[0]
+def cost_jac_hess(x, weights: np.ndarray, x_all: np.ndarray, ind_center: int, exp: int = DEFAULT_EXP,
+                  min_dist: float = 4.0, pen_dist: float = 5.0) -> (float, np.ndarray, np.ndarray):
+    assert weights.ndim == 1 and x_all.ndim == 2 and x.ndim == 1 and x.shape[0] == 3
+    assert 0 < min_dist < pen_dist
+    len_x = x_all = x_all.shape[0]
     assert len_x == weights.shape[0]
-    k = x[0]
-    # Energy and derivatives w.r.t. k
-    ek = 0
-    dedk = 0
-    # Exponent minus one
-    e1 = exp - 1
-
-    probe_cart = k * unitvec
-    probe_cart += x_all[ind_center]
-    min_bound_2 = min_bound * min_bound
-    max_bound_2 = max_bound * max_bound
-
+    
+    min_dist2 = min_dist * min_dist
+    max_dist2 = pen_dist * pen_dist
+    
+    e = 0
+    grad = np.zeros(3, float)
+    # Hessian-related values commented out.
+    #hess = np.zeros((3, 3), float)
+    
     for i in range(len_x):
         xi = x_all[i]
-        dists = xi - probe_cart
-        dists2 = np.square(dists)
-        r2 = np.sum(dists2)
-        if r2 < min_bound_2:
-            r = math.sqrt(r2)
-            dbound = min_bound - r
-            ek += weights[i] * (dbound ** exp)
-            drdk = calc_drdk(dists=dists, unitvec=unitvec, r=r)
-            dedk -= weights[i] * exp * (dbound ** e1) * drdk
-        elif i == ind_center and r2 > max_bound_2:
-            r = math.sqrt(r2)
-            dbound = r - max_bound
-            ek += weights[i] * (dbound ** exp)
-            drdk = calc_drdk(dists=dists, unitvec=unitvec, r=r)
-            dedk += weights[i] * (dbound ** e1) * drdk
-        # Else, no energy/derivative at the flat bottom.
+        # rv is distance vector.
+        rv = x - xi
+        rv2 = np.square(rv)
+        # rm2 is the square of the distance magnitude
+        rm2 = np.sum(rv2)
+        if rm2 < min_dist2:
+            result = cost_jac_inner(True, rm2, min_dist, i, weights, exp, rv)
+            e += result[0]
+            grad += result[1]
+            #hess += result[2]
+        elif i == ind_center and rm2 > max_dist2:
+            result = cost_jac_inner(False, rm2, min_dist, i, weights, exp, rv)
+            e += result[0]
+            grad += result[1]
+            #hess += result[2]
+    global last_x, last_hess
+    last_x = x.copy()
+    #last_hess = hess.copy()
+    return e, grad
+    
 
-    return ek, np.array([dedk])
-
+"""def get_hess(x, *args) -> np.ndarray:
+    global last_x, last_hess
+    if isinstance(last_x, np.ndarray) and np.array_equal(x, last_x) and isinstance(last_hess, np.ndarray):
+        return last_hess.copy()
+    else:
+        last_x = x
+        last_hess = cost_jac_hess(x, *args)[2]
+        return last_hess.copy()"""
+        
 
 def main():
     parser = argparse.ArgumentParser()
@@ -132,8 +143,6 @@ def main():
     parser.add_argument('-e', dest='exp', type=int, default=DEFAULT_EXP, help='Exponent for the square of distance in '
                                                                               'the target function')
     parser.add_argument('-x', dest='xyzpdb', type=str, default='xyzpdb', help='Name or full path of Tinker xyzpdb')
-    parser.add_argument('-l', dest='linopt', type=bool, action='store_true', help='After determining the direction where '
-                                                                                  'the probe should be placed, additionally relax the distance.')
     parser.add_argument('infile', nargs=1, type=str)
 
     args = parser.parse_args()
@@ -174,75 +183,73 @@ def main_inner(xyz_input: StructXYZ, at: int = DEFAULT_PROBE_TYPE, dx: float = D
     return probe_locs
 
 
+def check_valid_probe(probe_xyz: np.ndarray, real_xyz: np.ndarray, min_dx2: float) -> bool:
+    for i in range(len(real_xyz)):
+        xyzi = real_xyz[i]
+        dx2 = dist2(xyzi, probe_xyz)
+        if dx2 < min_dx2:
+            return False
+    return True
+
+
 def inner_loop(xyz_input: StructXYZ, ai: int, dx: float, exponent: int, real_xyz: np.ndarray, avoid_weight: np.ndarray,
-               out_file_base: str, xyzpdb: str, out_locs: np.ndarray, keyf: str = None):
+               out_file_base: str, xyzpdb: str, out_locs: np.ndarray, keyf: str = None, pen_ddx: float = 1.0,
+               bound_ddx: float = 2.0):
+    assert 0 < pen_ddx < bound_ddx and dx > 0 and exponent > 0
+
+    pen_ddx += dx
+    bound_ddx += dx
     if keyf is None:
         keyf = xyz_input.key_file
     center_xyz = real_xyz[ai]
     n_ats = real_xyz.shape[0]
     atom_quick_id = f"{xyz_input.atom_names[ai]}{ai + 1:d}"
 
-    pi2 = 0.5 * pi
-    guesses = np.array([[0, 0], [pi2, 0], [pi2, pi2], [pi2, pi], [pi2, -1 * pi2], [pi, 0]])
+    guesses = np.empty((6, 3), dtype=float)
+    for i in range(6):
+        guesses[i] = center_xyz.copy()
+    guesses[0][0] += dx
+    guesses[1][0] -= dx
+    guesses[2][1] += dx
+    guesses[3][1] -= dx
+    guesses[4][2] += dx
+    guesses[5][2] -= dx
+    
+    bounds = np.zeros((3, 2))
+    for i in range(3):
+        bounds[i][0] = center_xyz[i] - bound_ddx
+        bounds[i][1] = center_xyz[i] + bound_ddx
 
-    opt_args = (avoid_weight, real_xyz, ai, dx, exponent)
-    outs = []
+    opt_args = (avoid_weight, real_xyz, ai, exponent, dx, pen_ddx)
     out_carts = []
     vector_carts = []
     lowest_cart = None
     lowest_e = np.finfo(float).max
-    method = 'BFGS'
-    linear_method='L-BFGS-B'
+    method = 'L-BFGS-B'
     eprint(f"Beginning {method} maximization of distance from atom {atom_quick_id} to non-target atoms.")
     eprint(f"Atomic center: {center_xyz}")
 
     ctr = 1
-    max_dx = dx + 1.0
-    linear_bounds = [[dx, max_dx + 1.0]]
 
     for guess in guesses:
         eprint(f"Starting from guess {guess} w/ Cartesian coordinates {np.add(to_cartesian(guess, dx)[0], center_xyz)}")
-        opt_result = scipy.optimize.minimize(cost_gradient, guess, args=opt_args, method=method, jac=True,
-                                             options={'disp': False, 'maxiter': 10000, 'gtol': 1E-9})
+        opt_result = scipy.optimize.minimize(cost_jac_hess, guess, args=opt_args, method=method, jac=True,
+                                             options={'disp': True, 'maxiter': 10000, 'gtol': 1E-9})
+
         if not opt_result.success:
-            eprint(f'\nWARNING: Directional optimization was not a success! Status: {opt_result.status}')
+            eprint(f'\nWARNING: Optimization was not a success! Status: {opt_result.status}')
             eprint(f'Error message: {opt_result.message}\n')
-        this_out = opt_result.x
-        this_cart = to_cartesian(this_out, dx)[0]
+        #this_out = opt_result.x
+        #this_cart = to_cartesian(this_out, dx)[0]
+        this_cart = opt_result.x
 
-        # TODO: Set min_bound and max_bound
-        linopt_args = (avoid_weight, real_xyz, ai, this_cart, exponent, dx, max_dx)
-        linopt_result = scipy.optimize.minimize(linear_costgrad, np.array([dx]), args=linopt_args, method=linear_method,
-                                                jac=True, bounds=linear_bounds,
-                                                options={'disp': True, 'maxiter': 1000, 'gtol': 1E-9})
-        if not linopt_result.success:
-            eprint(f'\nWARNING: Distance optimization was not a success! Status: {opt_result.status}')
-            eprint(f'Error message: {opt_result.message}\n')
-        e_orig = linopt_result.fun
-        k_orig = linopt_result.x[0]
-        min_e = e_orig
-        min_k = linopt_result.x
-        for i in range(10):
-            test_k = k_orig + (0.01 * i)
-            test_arr = np.array([test_k])
-            test_e = linear_costgrad(test_arr, avoid_weight, real_xyz, ai, this_cart, exponent, dx, max_dx)
-            if test_e < min_e:
-                eprint(f"Found energy {test_e:.5f} < optimization result {e_orig:.5f} at separation {test_k} Angstroms")
-                min_e = test_e
-                min_k = test_k
-
-
-        this_cart += center_xyz
         vector_carts.append(this_cart)
         out_carts.append(this_cart)
-        this_out = np.rad2deg(this_out)
-        outs.append(this_out)
         eprint(f'Energy after {opt_result.nit} iterations: {opt_result.fun:.5g}')
         if opt_result.fun < lowest_e:
             lowest_e = opt_result.fun
             lowest_cart = this_cart
-        eprint(f'Output coordinates: theta {this_out[0]:.5f}, phi {this_out[1]:.5f}, r , XYZ {this_cart}\n')
-        xyz_input.coords[n_ats, :] = this_cart
+        eprint(f'Output coordinates: {this_cart[0]:.5f}, {this_cart[1]:.5f}, {this_cart[2]:.5f}')
         ctr += 1
         xyz_input.coords[n_ats, :] = center_xyz
 
