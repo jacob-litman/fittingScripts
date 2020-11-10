@@ -1,9 +1,7 @@
-import sys
-
 import numpy as np
 import math
 
-from JMLUtils import dist2, eprint
+from JMLUtils import eprint
 from StructureXYZ import StructXYZ
 
 TRIANGLE_TOL = 1E-4
@@ -29,6 +27,5 @@ def ammonia(infile: str = 'QM_REF.xyz', delta = 4.0):
 
     out_xyz = (place_vec * (mag_place / mag_pv)) + triangle_center
     eprint(f"Placing probe at {out_xyz}")
-    #      5 PC     0.00003338   -0.00004251   -4.11463700   999
     xyzfi.append_atom("PC", out_xyz, 999)
     xyzfi.write_out("AMMONIA_PROBE.xyz")

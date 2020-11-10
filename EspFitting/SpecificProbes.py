@@ -1,5 +1,6 @@
 import argparse
 import ProbePlacers.Ammonia
+import ProbePlacers.Water
 import sys
 from JMLUtils import eprint
 
@@ -15,6 +16,8 @@ def main():
     inf = args.infile[0]
     if molec == "AMMONIA":
         ProbePlacers.Ammonia.ammonia(inf, *args.additional)
+    elif molec == "WATER":
+        ProbePlacers.Water.water(inf, *args.additional)
     else:
         raise ValueError(f"Could not find any probe placement script with name {args.molecule}!")
 
