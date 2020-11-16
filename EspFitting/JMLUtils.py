@@ -2,6 +2,7 @@ import sys
 import os
 import subprocess
 import re
+import math
 from typing import Sequence, Dict, Mapping, List
 from enum import Enum, auto
 import numpy as np
@@ -155,3 +156,16 @@ def parse_qm_program(parsed: str, default_program: QMProgram = QMProgram.PSI4) -
         return QMProgram.PSI4
     else:
         return default_program
+
+
+def to_cartesian(x: np.ndarray, r: float) -> (np.ndarray, float, float, float, float):
+    assert x.shape[0] == 2 and x.ndim == 1 and r > 0
+    # Theta and phi
+    t = x[0]
+    p = x[1]
+    sin_t = math.sin(t)
+    cos_t = math.cos(t)
+    sin_p = math.sin(p)
+    cos_p = math.cos(p)
+    cart = np.array((r * sin_t * cos_p, r * sin_t * sin_p, r * cos_t))
+    return cart, sin_t, cos_t, sin_p, cos_p

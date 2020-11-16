@@ -27,5 +27,5 @@ def ammonia(infile: str = 'QM_REF.xyz', delta = 4.0):
 
     out_xyz = (place_vec * (mag_place / mag_pv)) + triangle_center
     eprint(f"Placing probe at {out_xyz}")
-    xyzfi.append_atom("PC", out_xyz, 999)
+    xyzfi.append_atom(xyzfi.get_default_probetype(), out_xyz)
     xyzfi.write_out("AMMONIA_PROBE.xyz")

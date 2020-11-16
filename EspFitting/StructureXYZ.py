@@ -15,13 +15,17 @@ import os
 adef_patt = re.compile(r'^atom +(\d+) +(\d+) +(\S+) +"?([^"]+)"? +(\d+) +(\d+\.\d+) +(\d+)\s*$')
 mpole_cont_patt = re.compile(r'^( +-?\d+\.\d+)+ *\\? *$')
 polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( [ 0-9]+ *)$')
-DEFAULT_PROBE_ATOM_NUM = 999
+DEFAULT_PROBE_ANUM = 999
 DEFAULT_PSI4_ITERS = 300
 # TODO: Either use the periodictable package (Pip) or flesh this out.
 elements = {1: 'H', 2: 'HE',
             3: 'LI', 4: 'BE', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 10: 'NE',
             11: 'NA', 12: 'MG', 13: 'AL', 14: 'SI', 15: 'P', 16: 'S', 17: 'CL', 18: 'AR'}
 
+DEFAULT_PROBE_DESC = "Probe Charge        "
+DEFAULT_PROBE_NAME = 'PC'
+DEFAULT_PROBE_TYPE = 999
+DEFAULT_PROBE_MASS = 1.0
 
 class StructXYZ:
     def __init__(self, in_file: str, probe_types: Sequence[int] = None, key_file: str = None):
@@ -54,6 +58,7 @@ class StructXYZ:
         self.atom_names = np.genfromtxt(self.in_file, skip_header=skip_r, usecols=[1], dtype=str)
         self.coords = np.genfromtxt(self.in_file, skip_header=skip_r, usecols=(2, 3, 4), dtype=np.float64)
         self.assigned_atypes = np.genfromtxt(self.in_file, skip_header=skip_r, usecols=[5], dtype=np.int32)
+        self.default_probetype = None
 
         self.probe_indices = []
         if probe_types is None:
@@ -102,7 +107,8 @@ class StructXYZ:
         assert self.def_atypes is not None
         return self.def_atypes[self.assigned_atypes[i]]
 
-    def append_atom(self, name: str, xyz: np.ndarray, atype: int, bonds: Sequence[int] = None):
+    def append_atom(self, atype: int, xyz: np.ndarray, bonds: Sequence[int] = None):
+        name = self.def_atypes[atype][2]
         if atype in self.probe_types:
             self.probe_indices.append(self.n_atoms)
         self.n_atoms += 1
@@ -403,3 +409,10 @@ class StructXYZ:
         if delete_file:
             os.remove(esp_fi)
         return esp_arr
+
+    def get_default_probetype(self):
+        if self.default_probetype is None:
+            self.default_probetype = self.append_atype_def(DEFAULT_PROBE_TYPE, DEFAULT_PROBE_TYPE, DEFAULT_PROBE_NAME,
+                                                           DEFAULT_PROBE_DESC, DEFAULT_PROBE_ANUM, DEFAULT_PROBE_MASS,
+                                                           0, isprobe=True)
+        return self.default_probetype

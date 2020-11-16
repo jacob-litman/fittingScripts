@@ -29,5 +29,5 @@ def water(infile: str = 'QM_REF.xyz', delta = 4.0):
     from_bisector = math.sqrt((delta * delta) - half_bisector)
     out_xyz = (place_vec * (from_bisector / mag_pv)) + triangle_center
     eprint(f"Placing probe at {out_xyz}")
-    xyzfi.append_atom("PC", out_xyz, 999)
+    xyzfi.append_atom(xyzfi.get_default_probetype(), out_xyz)
     xyzfi.write_out("WATER_PROBE.xyz")

@@ -9,6 +9,10 @@ import os
 def main_inner(probe_name: str, in_name: str = None, out_name: str = "all_probes.pdb", probe_dirs: Sequence[str] = None):
     if probe_dirs is None:
         probe_dirs = get_probe_dirs()
+    if len(probe_dirs) == 0:
+        eprint(f"No subdirectories with QM_PR.xyz: taking all subdirectories containing {in_name}")
+        probe_dirs = [sd for sd in os.scandir('.') if (sd.is_dir() and os.path.exists(f"{sd}{os.sep}{in_name}"))]
+
     if in_name is None:
         pdb_files = []
         for dir in probe_dirs:
