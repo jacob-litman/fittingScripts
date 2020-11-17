@@ -8,10 +8,10 @@ TRIANGLE_TOL = 1E-4
 Y_DENOM = 1.0 / math.sqrt(3)
 
 
-def ammonia(infile: str = 'QM_REF.xyz', delta = 4.0):
+def ammonia(infile: str = 'QM_REF.xyz', delta=4.0):
     delta = float(delta)
 
-    xyzfi = StructXYZ(infile, probe_types=[999])
+    xyzfi = StructXYZ(infile)
     assert len(xyzfi.probe_indices) == 0
     assert xyzfi.n_atoms == 4
     assert xyzfi.atom_names[0].startswith("N")
@@ -27,5 +27,5 @@ def ammonia(infile: str = 'QM_REF.xyz', delta = 4.0):
 
     out_xyz = (place_vec * (mag_place / mag_pv)) + triangle_center
     eprint(f"Placing probe at {out_xyz}")
-    xyzfi.append_atom(xyzfi.get_default_probetype(), out_xyz)
+    xyzfi.append_atom(xyzfi.get_default_probetype()[0], out_xyz)
     xyzfi.write_out("AMMONIA_PROBE.xyz")

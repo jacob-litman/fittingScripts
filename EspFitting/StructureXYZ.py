@@ -108,6 +108,9 @@ class StructXYZ:
         return self.def_atypes[self.assigned_atypes[i]]
 
     def append_atom(self, atype: int, xyz: np.ndarray, bonds: Sequence[int] = None):
+        if isinstance(atype, tuple):
+            # Assume a whole probetype tuple was passed, not just the index.
+            atype = atype[0]
         name = self.def_atypes[atype][2]
         if atype in self.probe_types:
             self.probe_indices.append(self.n_atoms)
