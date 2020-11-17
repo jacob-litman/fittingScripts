@@ -14,9 +14,11 @@ from OptionParser import OptParser
 from typing import List
 
 
-def write_init_qm(xyz_in: StructXYZ, charge: int, spin: int, opts: OptParser):
+def write_init_qm(xyz_in: StructXYZ, charge: int, spin: int, opts: OptParser, fname: str = None):
     copts = ComOptions(charge, spin, opts)
     jname = 'QM_REF'
+    if fname is None:
+        fname = jname
     is_psi4 = opts.is_psi4()
     if is_psi4:
         copts.chk = jname + ".npy"
@@ -24,7 +26,7 @@ def write_init_qm(xyz_in: StructXYZ, charge: int, spin: int, opts: OptParser):
         copts.chk = jname + ".chk"
     copts.do_polar = True
     copts.write_esp = True
-    xyz_in.write_qm_job(com_opts=copts, fname=jname, jname=jname, write_fchk=True)
+    xyz_in.write_qm_job(com_opts=copts, fname=fname, jname=jname, write_fchk=True)
 
 
 def get_probe_comopts(charge: int, spin: int, opts: OptParser) -> ComOptions:
@@ -43,6 +45,12 @@ def write_probe_qm(xyz_in: StructXYZ, opts: OptParser, comopts: ComOptions, dirn
     if extra_headers is None:
         extra_headers = []
     is_psi4 = opts.is_psi4()
+
+    if dirn is None:
+        dirn = ""
+    elif not dirn.endswith(os.sep):
+        dirn += os.sep
+
     if is_psi4:
         extra_headers.append('import shutil')
         extra_footers.extend(['wfn2 = psi4.core.Wavefunction.from_file("../QM_REF.npy")',
@@ -50,7 +58,7 @@ def write_probe_qm(xyz_in: StructXYZ, opts: OptParser, comopts: ComOptions, dirn
                               'oeprop(wfn2, "GRID_ESP")',
                               'shutil.move("grid_esp.dat", "QM_REF.grid_esp.dat")'])
 
-    xyz_in.write_qm_job(comopts, f"{dirn}QM_PR", 'QM_PR', probe_charge, header_lines=extra_headers,
+    xyz_in.write_qm_job(comopts, f"{dirn}{os.sep}QM_PR", 'QM_PR', probe_charge, header_lines=extra_headers,
                         footer_lines=extra_footers, write_fchk=True)
 
 

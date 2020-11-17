@@ -208,9 +208,10 @@ def extract_molspec(qm_fi: str, program: QMProgram) -> (int, int, np.ndarray, np
                 elif after_routing:
                     m = chargespin_patt.match(line)
                     if m:
+                        toks = line.strip().split()
                         in_molspec = True
                         charge = int(toks[0])
-                        spin = int(toks[0])
+                        spin = int(toks[1])
                 line = r.readline()
     else:
         raise ValueError(f"Unrecognized QM program {program}")
