@@ -11,10 +11,51 @@ from ComOptions import ComOptions
 from StructureXYZ import StructXYZ
 from JMLUtils import eprint, verbose_call
 from OptionParser import OptParser
+from typing import List
+
+
+def write_init_qm(xyz_in: StructXYZ, charge: int, spin: int, opts: OptParser):
+    copts = ComOptions(charge, spin, opts)
+    jname = 'QM_REF'
+    is_psi4 = opts.is_psi4()
+    if is_psi4:
+        copts.chk = jname + ".npy"
+    else:
+        copts.chk = jname + ".chk"
+    copts.do_polar = True
+    copts.write_esp = True
+    xyz_in.write_qm_job(com_opts=copts, fname=jname, jname=jname, write_fchk=True)
+
+
+def get_probe_comopts(charge: int, spin: int, opts: OptParser) -> ComOptions:
+    probe_qm_opt = ComOptions(charge, spin, opts)
+    probe_qm_opt.write_esp = True
+    if opts.is_psi4():
+        probe_qm_opt.chk = 'QM_PR.npy'
+    else:
+        probe_qm_opt.chk = 'QM_PR.chk'
+    return probe_qm_opt
+
+
+def write_probe_qm(xyz_in: StructXYZ, opts: OptParser, comopts: ComOptions, dirn: str, probe_charge: float, extra_headers: List[str] = None, extra_footers: List[str] = None):
+    if extra_footers is None:
+        extra_footers = []
+    if extra_headers is None:
+        extra_headers = []
+    is_psi4 = opts.is_psi4()
+    if is_psi4:
+        extra_headers.append('import shutil')
+        extra_footers.extend(['wfn2 = psi4.core.Wavefunction.from_file("../QM_REF.npy")',
+                              'shutil.move("grid_esp.dat", "QM_PR.grid_esp.dat")',
+                              'oeprop(wfn2, "GRID_ESP")',
+                              'shutil.move("grid_esp.dat", "QM_REF.grid_esp.dat")'])
+
+    xyz_in.write_qm_job(comopts, f"{dirn}QM_PR", 'QM_PR', probe_charge, header_lines=extra_headers,
+                        footer_lines=extra_footers, write_fchk=True)
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-n', dest='probe_name', type=str, default='PC', help='Atom name to give the probe')
     parser.add_argument('-w', dest='hydrogen_weight', type=float, default=0.4, help='Relative weighting for '
                                                                                     'hydrogen distances')
     parser.add_argument('-e', dest='exp', type=int, default=3, help='Exponent for the square of distance in target '
@@ -51,21 +92,12 @@ def main():
         raise ValueError("Could not determine if program in use is Gaussian or Psi4!")
 
     eprint("Step 1: writing reference QM input file")
-    init_com_opts = ComOptions(args.charge, args.spin, opts=opts)
-    jname = 'QM_REF'
-    if is_psi4:
-        init_com_opts.chk = f"{jname}.npy"
-    else:
-        init_com_opts.chk = f"{jname}.chk"
-    init_com_opts.do_polar = True
-    init_com_opts.write_esp = True
-    xyz_in.write_qm_job(com_opts=init_com_opts, fname='QM_REF', jname=jname, write_fchk=True)
+    write_init_qm(xyz_in, args.charge, args.spin, opts)
     physical_atom_ids = [f"{xyz_in.atom_names[i]}{i+1}" for i in range(n_physical)]
     # TODO: Customize this via either poltype.ini or similar.
 
     eprint("Step 2: writing key files with probe (with reference and uncharged solutes)")
-    probe_type = xyz_in.append_atype_def(ProbePlacement.DEFAULT_PROBE_TYPE, ProbePlacement.DEFAULT_PROBE_TYPE,
-                                         args.probe_name, ProbePlacement.DEFAULT_PROBE_DESC, 1, 1.0, 0, True)
+    probe_type = xyz_in.get_default_probetype()
 
     atype_out = f'atom        {probe_type[0]:>5d}  {probe_type[1]:>5d}  {probe_type[2]:>3s}     {probe_type[3]}      ' \
                 f'{probe_type[4]:>4d} {probe_type[5]:>9.3f}   {probe_type[6]:>2d}\n'
@@ -83,15 +115,10 @@ def main():
     xyz_in.write_key_old_neutral('PR_NREF.key', added_lines=addtl_lines)
 
     eprint("Step 3: placing probe")
-    probe_locs = ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type, keyf='QM_PR.key')
+    probe_locs = ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type[0], keyf='QM_PR.key')
 
     eprint("Step 4: creating probe subdirectories")
-    probe_qm_opt = ComOptions(args.charge, args.spin, opts=opts)
-    probe_qm_opt.write_esp = True
-    if is_psi4:
-        probe_qm_opt.chk = "QM_PR.npy"
-    else:
-        probe_qm_opt.chk = "QM_PR.chk"
+    probe_qm_opt = get_probe_comopts(args.charge, args.spin, opts)
 
     for i, pid in enumerate(physical_atom_ids):
         dirn = f"{pid}{os.sep}"
@@ -100,17 +127,7 @@ def main():
         shutil.copy2('QM_PR.key', dirn)
         shutil.copy2(keyf, f"{dirn}QM_REF.key")
         xyz_in.coords[n_physical, :] = probe_locs[i, :]
-        if is_psi4:
-            extra_headers = ['import shutil']
-            extra_footers = ['wfn2 = psi4.core.Wavefunction.from_file("../QM_REF.npy")',
-                             'shutil.move("grid_esp.dat", "QM_PR.grid_esp.dat")',
-                             'oeprop(wfn2, "GRID_ESP")',
-                             'shutil.move("grid_esp.dat", "QM_REF.grid_esp.dat")']
-        else:
-            extra_headers = None
-            extra_footers = None
-        xyz_in.write_qm_job(probe_qm_opt, f"{dirn}QM_PR", "QM_PR", args.probe_charge, header_lines=extra_headers,
-                            footer_lines=extra_footers, write_fchk=True)
+        write_probe_qm(xyz_in, opts, probe_qm_opt, dirn, args.probe_charge)
 
     tinker_path = args.tinker_path
     if not tinker_path.endswith(os.sep) and tinker_path != '':

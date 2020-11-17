@@ -8,6 +8,7 @@ from enum import Enum, auto
 import numpy as np
 
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
+chargespin_patt = re.compile(r"^ *(-?\d+) +(-?\d+) *$")
 hartree = 627.5094736
 
 
@@ -156,6 +157,67 @@ def parse_qm_program(parsed: str, default_program: QMProgram = QMProgram.PSI4) -
         return QMProgram.PSI4
     else:
         return default_program
+
+
+def extract_molspec(qm_fi: str, program: QMProgram) -> (int, int, np.ndarray, np.ndarray):
+    atoms = []
+    coords = []
+    charge = None
+    spin = None
+    if program == QMProgram.PSI4:
+        with open(qm_fi, 'r') as r:
+            line = r.readline()
+            in_molspec = False
+            while line != "":
+                if in_molspec:
+                    if "}" in line:
+                        in_molspec = False
+                    toks = line.strip().rstrip("}").rstrip().split()
+                    if len(toks) > 3:
+                        assert len(toks) < 6
+                        atoms.append(toks[0])
+                        coords.append(toks[1:4])
+                    else:
+                        assert not in_molspec
+                elif line.startswith("molecule"):
+                    if not line.rstrip().endswith("{"):
+                        assert r.readline().strip() == "{"
+                    toks = r.readline().strip().split()
+                    assert len(toks) == 2
+                    charge = int(toks[0])
+                    spin = int(toks[1])
+                    in_molspec = True
+                line = r.readline()
+    elif program == QMProgram.GAUSSIAN:
+        with open(qm_fi, 'r') as r:
+            line = r.readline()
+            in_molspec = False
+            after_routing = False
+            while line != "":
+                if in_molspec:
+                    if line == "\n":
+                        in_molspec = False
+                        after_routing = False
+                    else:
+                        toks = line.strip().split()
+                        assert len(toks) == 4
+                        atoms.append(toks[0])
+                        coords.append(toks[1:4])
+                elif line.startswith("#"):
+                    after_routing = True
+                elif after_routing:
+                    m = chargespin_patt.match(line)
+                    if m:
+                        in_molspec = True
+                        charge = int(toks[0])
+                        spin = int(toks[0])
+                line = r.readline()
+    else:
+        raise ValueError(f"Unrecognized QM program {program}")
+
+    coords = np.array(coords, dtype=np.float64)
+    assert charge is not None and spin is not None and len(atoms) > 0 and len(atoms) == coords.shape[0] and coords.shape[1] == 3
+    return charge, spin, np.array(atoms), coords
 
 
 def to_cartesian(x: np.ndarray, r: float) -> (np.ndarray, float, float, float, float):

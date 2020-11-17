@@ -79,12 +79,18 @@ def main():
                    max_dist=args.max_distance, exp=args.exponent, hwt=args.hydrogen_weight, xyzpdb=args.xyzpdb)
 
 
-def main_inner(xyz_input: StructXYZ, keyf: str = None, out_file_base: str = DEFAULT_OUTFILE, probe_type: int = None,
+def main_inner(xyz_input: StructXYZ, keyf: str = None, out_file_base: str = DEFAULT_OUTFILE, probe_type = None,
                min_dist: float = DEFAULT_MIN_DIST, restrain_dist: float = DEFAULT_RESTRAIN_DIST,
                max_dist: float = DEFAULT_MAX_DIST, exp: int = DEFAULT_EXP, hwt: float = DEFAULT_HWT,
                weight_weak: float = 1.0, xyzpdb: str = 'xyzpdb'):
+    assert len(xyz_input.probe_indices) == 0
     if probe_type is None:
         probe_type = xyz_input.get_default_probetype()[0]
+    elif isinstance(probe_type, tuple):
+        probe_type = probe_type[0]
+    else:
+        assert isinstance(probe_type, int)
+    assert probe_type in xyz_input.probe_types
 
     """Main driver for the script; can be called externally as well. Returns the atom type used for the probe."""
     n_real_ats = xyz_input.n_atoms
@@ -114,7 +120,7 @@ def inner_loop(xyz_input: StructXYZ, ai: int, real_xyz: np.ndarray, avoid_weight
     assert probe_type in xyz_input.probe_types
     assert exp > 1
     assert weight_weak >= 0
-    assert len(xyz_input.probe_indices) == 0
+    assert len(xyz_input.probe_indices) == 1
 
     if keyf is None:
         keyf = xyz_input.key_file

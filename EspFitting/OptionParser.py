@@ -16,6 +16,7 @@ scf_types = KNOWN_DFT_TYPES.copy()
 scf_types.append('HF')
 KNOWN_SCF_TYPES = frozenset(scf_types)
 
+
 class OptParser:
     def rectify_oddities(self):
         """Should be called upon modification to deal with gotchas like Gaussian using PBE1PBE to represent the PBE0
@@ -46,6 +47,7 @@ class OptParser:
                         self.options[toks[0]] = toks[1]
         else:
             eprint('No options file specified or found; default properties will be used!')
+        self.file = fname
         self.rectify_oddities()
 
     def is_psi4(self) -> bool:
