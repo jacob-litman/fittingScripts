@@ -77,6 +77,7 @@ def main_inner(probe_types: Sequence[int] = None):
                     line = line.replace(" ", "")
                     if line.lower().startswith("program="):
                         orig_program = JMLUtils.parse_qm_program(line.split("=")[1])
+
     if orig_program is None:
         raise ValueError("Could not find out which program was used previously to set up this directory!")
     elif orig_program == JMLUtils.QMProgram.PSI4:
@@ -85,6 +86,8 @@ def main_inner(probe_types: Sequence[int] = None):
     else:
         old_qm_ref = 'QM_REF.com'
         old_qm_pr = 'QM_PR.com'
+
+    link_grid = (orig_program == JMLUtils.QMProgram.GAUSSIAN) and optp.is_psi4()
 
     in_file = optp.file
     for root, dirs, files in os.walk('.'):
@@ -111,6 +114,11 @@ def main_inner(probe_types: Sequence[int] = None):
         os.remove(old_qm)
         EspSetup.write_init_qm(xyz, charge, spin, optp, fname=new_qm)
 
+        if link_grid:
+            grid_dest = join(root, 'grid.dat')
+            assert not os.path.exists(grid_dest)
+            os.symlink('QM_REF.grid', grid_dest)
+
         probe_type = probe_types[0]
         probe_comopts = EspSetup.get_probe_comopts(charge, spin, optp)
         for sd in subdirs:
@@ -130,6 +138,10 @@ def main_inner(probe_types: Sequence[int] = None):
             eprint(f"  Extracted probe type {probe_type} with charge {probe_charge}")
             os.remove(old_qm)
             EspSetup.write_probe_qm(xyz, optp, probe_comopts, sd, probe_charge)
+            if link_grid:
+                grid_dest = join(sd, 'grid.dat')
+                assert not os.path.exists(grid_dest)
+                os.symlink('QM_PR.grid', grid_dest)
 
 
 if __name__ == "__main__":
