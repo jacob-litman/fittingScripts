@@ -114,8 +114,8 @@ def dist2(coord1: np.ndarray, coord2: np.ndarray) -> float:
     return np.square(np.array(coord1) - np.array(coord2)).sum()
 
 
-def get_probe_dirs() -> List[str]:
-    return [f.path for f in os.scandir(".") if (f.is_dir() and os.path.exists(f"{f.path}{os.sep}QM_PR.xyz"))]
+def get_probe_dirs(base_dir: str = ".") -> List[str]:
+    return [f.path for f in os.scandir(base_dir) if (f.is_dir() and os.path.exists(f"{f.path}{os.sep}QM_PR.xyz"))]
 
 
 class QMProgram(Enum):

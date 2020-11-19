@@ -28,7 +28,8 @@ DEFAULT_PROBE_TYPE = 999
 DEFAULT_PROBE_MASS = 1.0
 
 class StructXYZ:
-    def __init__(self, in_file: str, probe_types: Sequence[int] = None, key_file: str = None):
+    def __init__(self, in_file: str, probe_types: Sequence[int] = None, key_file: str = None,
+                 load_polar_types: bool = False, polar_type_fi: str = None):
         self.in_file = in_file
         with open(self.in_file, 'r') as f:
             in_line = f.readline()
@@ -92,6 +93,15 @@ class StructXYZ:
                         self.def_atypes[atype] = new_atype
                         # TODO: Read more information.
                     in_line = f.readline()
+
+        self.polarization_types = None
+        if load_polar_types:
+            if polar_type_fi is None:
+                polar_type_fi = 'polar-types.txt'
+                assert os.path.exists(polar_type_fi)
+            self.polarization_types = np.genfromtxt(polar_type_fi, dtype=str)
+            for i in range(self.n_atoms):
+                assert self.polarization_types[i][0] == self.atom_names[i][0]
 
     def __str__(self):
         if self.aperiodic:
