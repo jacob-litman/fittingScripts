@@ -17,7 +17,7 @@ polar_patt = re.compile(r"^(polarize +)(\d+)( +)(\d+\.\d+)( +.+)$")
 DEFAULT_POLARTYPE_FI = 'polartype-define.txt'
 
 
-def edit_keyf_polarize(polar_type_map: Mapping[str: float], from_fi: str, to_file: str, pr_xyz: StructXYZ,
+def edit_keyf_polarize(polar_type_map: Mapping[str, float], from_fi: str, to_file: str, pr_xyz: StructXYZ,
                        precis: int = 10):
     assert from_fi != to_file
     probe_types = pr_xyz.probe_types
@@ -227,7 +227,7 @@ def main():
     parser.add_argument('-i', '--maxiter', dest='max_iter', type=int, default=250, help='Maximum iterations of the '
                                                                                         'optimizer')
     parser.add_argument('optimize_info', type=str, nargs=1, default='molecules.txt',
-                        help='File containing paths to molecules (i.e. QM_REF.xyz)')
+                        help='File containing paths to molecules (i.e. path/to/QM_REF.xyz)')
 
     args = parser.parse_args()
     mfis = get_molec_files(args.optimize_info)
