@@ -232,3 +232,7 @@ def to_cartesian(x: np.ndarray, r: float) -> (np.ndarray, float, float, float, f
     cos_p = math.cos(p)
     cart = np.array((r * sin_t * cos_p, r * sin_t * sin_p, r * cos_t))
     return cart, sin_t, cos_t, sin_p, cos_p
+
+
+def list2_to_arr(list2: Sequence[list]) -> np.ndarray:
+    return np.array([item for sublist in list2 for item in sublist])
