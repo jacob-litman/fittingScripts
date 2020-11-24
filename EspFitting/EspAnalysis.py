@@ -79,7 +79,13 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         os.chdir(pdir)
         at_name = re.sub(r"^\./", '', pdir)
         foc_atom = name_to_atom('QM_PR.xyz', at_name)
-        eprint(f"Operating in directory {pdir}, atom {foc_atom[1]}{foc_atom[0]}\n")
+        if foc_atom is None:
+            focus = False
+            eprint(f"Operating in directory {pdir} with no specific atom\n")
+            pass
+        else:
+            focus = True
+            eprint(f"Operating in directory {pdir}, atom {foc_atom[1]}{foc_atom[0]}\n")
         if is_psi4:
             esp_fi = 'QM_PR.grid_esp.dat'
         else:
@@ -127,8 +133,12 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         eprint("Writing out QM polarization of ESP to qm_polarization.pot")
         with open('qm_polarization.pot', 'w') as f:
             with open('polarize_diff_qm.log', 'w') as f2:
-                SubPots.main_inner('QM_PR.pot', 'QM_REF.pot', out=f, err=f2, subtract=True, x=foc_atom[2],
-                                   y=foc_atom[3], z=foc_atom[4], header_comment='qm_polarization.pot')
+                if focus:
+                    SubPots.main_inner('QM_PR.pot', 'QM_REF.pot', out=f, err=f2, subtract=True, x=foc_atom[2],
+                                       y=foc_atom[3], z=foc_atom[4], header_comment='qm_polarization.pot')
+                else:
+                    SubPots.main_inner('QM_PR.pot', 'QM_REF.pot', out=f, err=f2, subtract=True,
+                                       header_comment='qm_polarization.pot')
 
         # Not included in the original eval scripts.
         # Possible OS incompatibility
@@ -168,15 +178,23 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         eprint("Writing out preliminary MM polarization of ESP to mm_polarization.pot")
         with open('mm_polarization.pot', 'w') as f:
             with open('polarize_diff_mm.log', 'w') as f2:
-                SubPots.main_inner('MM_PR.pot', 'MM_REF_BACK.pot', out=f, err=f2, subtract=True, x=foc_atom[2],
-                                   y=foc_atom[3], z=foc_atom[4], header_comment='mm_polarization.pot')
+                if focus:
+                    SubPots.main_inner('MM_PR.pot', 'MM_REF_BACK.pot', out=f, err=f2, subtract=True, x=foc_atom[2],
+                                       y=foc_atom[3], z=foc_atom[4], header_comment='mm_polarization.pot')
+                else:
 
+                    SubPots.main_inner('MM_PR.pot', 'MM_REF_BACK.pot', out=f, err=f2, subtract=True,
+                                       header_comment='mm_polarization.pot')
 
         eprint("Writing out delta-delta ESP (QM polarization - MM polarization) to ddesp_qm_mm.pot")
         with open('ddesp_qm_mm.pot', 'w') as f:
             with open('ddesp_qm_mm.pot.log', 'w') as f2:
-                SubPots.main_inner('qm_polarization.pot', 'mm_polarization.pot', out=f, err=f2, subtract=True,
-                                   x=foc_atom[2], y=foc_atom[3], z=foc_atom[4], header_comment='ddesp_qm_mm.pot')
+                if focus:
+                    SubPots.main_inner('qm_polarization.pot', 'mm_polarization.pot', out=f, err=f2, subtract=True,
+                                       x=foc_atom[2], y=foc_atom[3], z=foc_atom[4], header_comment='ddesp_qm_mm.pot')
+                else:
+                    SubPots.main_inner('qm_polarization.pot', 'mm_polarization.pot', out=f, err=f2, subtract=True,
+                                       header_comment='ddesp_qm_mm.pot')
 
         eprint('\n')
         os.chdir("..")

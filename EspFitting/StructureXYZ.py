@@ -95,13 +95,24 @@ class StructXYZ:
                     in_line = f.readline()
 
         self.polarization_types = None
+        self.ptype_to_atype = None
         if load_polar_types:
             if polar_type_fi is None:
-                polar_type_fi = 'polar-types.txt'
+                base_dir = os.path.dirname(self.in_file)
+                polar_type_fi = os.path.join(base_dir, 'polar-types.txt')
                 assert os.path.exists(polar_type_fi)
             self.polarization_types = np.genfromtxt(polar_type_fi, dtype=str)
-            for i in range(self.n_atoms):
-                assert self.polarization_types[i][0] == self.atom_names[i][0]
+            self.ptype_to_atype = {}
+            n_nonprobe = self.n_atoms - len(self.probe_indices)
+            for i in range(n_nonprobe):
+                k = self.polarization_types[i]
+                assert k[0] == self.atom_names[i][0]
+                v = self.assigned_atypes[i]
+                if k in self.ptype_to_atype:
+                    assert v == self.ptype_to_atype[k]
+                else:
+                    self.ptype_to_atype[k] = v
+            self.atype_to_ptype = {v: k for k, v in self.ptype_to_atype.items()}
 
     def __str__(self):
         if self.aperiodic:
