@@ -16,7 +16,7 @@ def main_inner(probe_name: str, in_name: str = None, out_name: str = "all_probes
     if in_name is None:
         pdb_files = []
         for dir in probe_dirs:
-            pdb_files.extend([fi.name for fi in os.scandir(dir) if (fi.is_file() and fi.name.ends_with(".pdb"))])
+            pdb_files.extend([fi.name for fi in os.scandir(dir) if (fi.is_file() and fi.name.endswith(".pdb"))])
     else:
         pdb_files = list(filter(lambda fi: os.path.exists(fi) and os.path.isfile(fi), [f'{pd}{os.sep}{in_name}'
                                                                                        for pd in probe_dirs]))
