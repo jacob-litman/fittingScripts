@@ -8,6 +8,8 @@ import StructureXYZ
 import numpy as np
 import scipy.optimize
 import time
+import concurrent.futures
+import sys
 
 DEFAULT_TOL = 1E-4
 DEFAULT_MAX_ITER = 1000
@@ -33,23 +35,51 @@ def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[in
                     w.write(line)
 
 
-def cost_function(x: np.ndarray, probe_mols: Sequence[StructureXYZ.StructXYZ], out_keys: Sequence[str],
-                  atype_maps: Sequence[Mapping[int, int]], potential: str, mm_refs: Sequence[np.ndarray],
-                  qm_polarizations: Sequence[np.ndarray]) -> float:
+def cost_function_sequential(x: np.ndarray, probe_mols: Sequence[StructureXYZ.StructXYZ], out_keys: Sequence[str],
+                  atype_maps: Sequence[Mapping[int, int]], potential: str, targets: Sequence[np.ndarray]) -> float:
+    sys.stdout.flush()
+    sys.stderr.flush()
     del_time = -time.time()
     tot_cost = 0
     for i, pm in enumerate(probe_mols):
-        edit_keyfile(pm.key_file, out_keys[i], x, atype_maps[i])
-        mm_potential = pm.get_esp(potential, out_keys[i])
-        assert np.array_equal(mm_potential[:,0:2], mm_refs[i][:,0:2])
-        mm_potential[:,3] -= mm_refs[i][:,3]
-        # At this point, mm_potential[:,3] should contain the MM polarization
-        mm_potential[:,3] -= qm_polarizations[i][:,3]
-        # At this point, this should be the MM polarization value. TODO: Combine mm_refs and qm_polarizations.
-        tot_cost += np.average(np.square(mm_potential[:,3]))
+        tot_cost += cost_interior(x, pm, out_keys[i], atype_maps[i], potential, targets[i])
+
     del_time += time.time()
     eprint(f"Function evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
+    sys.stdout.flush()
+    sys.stderr.flush()
     return tot_cost
+
+
+def cost_function(x: np.ndarray, probe_mols: Sequence[StructureXYZ.StructXYZ], out_keys: Sequence[str],
+                  atype_maps: Sequence[Mapping[int, int]], potential: str, targets: Sequence[np.ndarray],
+                  executor: concurrent.futures.Executor) -> float:
+    sys.stdout.flush()
+    sys.stderr.flush()
+    del_time = -time.time()
+    tot_cost = 0
+    costbundles = []
+    for i, pm in enumerate(probe_mols):
+        costbundles.append((x, pm, out_keys[i], atype_maps[i], potential, targets[i]))
+
+    futures = {executor.submit(cost_interior, *costbundle) for costbundle in costbundles}
+    for future in concurrent.futures.as_completed(futures):
+        tot_cost += future.result()
+
+    del_time += time.time()
+    eprint(f"Function evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    return tot_cost
+
+
+def cost_interior(x: np.ndarray, pm: StructureXYZ.StructXYZ, outkey: str, atype_map: Mapping[int, int], potential: str,
+                  target: np.ndarray) -> float:
+    edit_keyfile(pm.key_file, outkey, x, atype_map)
+    mm_potential = pm.get_esp(potential, outkey)
+    assert np.array_equal(mm_potential[:, 0:2], target[:, 0:2])
+    mm_potential[:, 3] -= target[:, 3]
+    return np.average(np.square(mm_potential[:, 3]))
 
 
 def main_inner(mfis: Sequence[str], ptype_names: np.ndarray, initial_x: np.ndarray, tinker_path: str = '',
@@ -57,8 +87,7 @@ def main_inner(mfis: Sequence[str], ptype_names: np.ndarray, initial_x: np.ndarr
     # 1D lists associated with reference molecules
     ref_mols = []
     # 1D pre-flattened lists associated with probe molecules. Some are effectively duplicates based on reference molecule.
-    mm_ref_potentials = []
-    qm_polarizes = []
+    targets = []
     probe_mols = []
     grid_points = []
     out_keys = []
@@ -96,23 +125,30 @@ def main_inner(mfis: Sequence[str], ptype_names: np.ndarray, initial_x: np.ndarr
                     break
             if all_found:
                 pdirs_i.append(pd)
-                mm_r_p = np.genfromtxt(join(pd, 'MM_REF_BACK.pot'), usecols=pot_cols, skip_header=1, dtype=np.float64)
-                mm_ref_potentials.append(mm_r_p)
-                grid_points.append(mm_r_p.shape[0])
-                qm_polarizes.append(np.genfromtxt(join(pd, 'qm_polarization.pot'), usecols=pot_cols, skip_header=1,
-                                                  dtype=np.float64))
+                target = np.genfromtxt(join(pd, 'MM_REF_BACK.pot'), usecols=pot_cols, skip_header=1, dtype=np.float64)
+                target[:,3] += np.genfromtxt(join(pd, 'qm_polarization.pot'), usecols=[4], skip_header=1,
+                                        dtype=np.float64)
+                grid_points.append(target.shape[0])
+                targets.append(target)
                 pmol = StructureXYZ.StructXYZ(join(pd, 'QM_PR.xyz'), probe_types=probe_types)
                 probe_mols.append(pmol)
                 out_keys.append(version_file(pmol.key_file))
                 # Will be many shallow copies.
                 atypes_to_x_index.append(atype_map)
 
-    opt_args = (probe_mols, out_keys, atypes_to_x_index, potential, mm_ref_potentials, qm_polarizes)
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        opt_args = (probe_mols, out_keys, atypes_to_x_index, potential, targets, executor)
+        bounds = (0, np.inf)
+        eprint("Setup complete: beginning optimization.")
+        ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2,
+                                                 bounds=bounds, xtol=tol)
+        eprint(f"Output of optimization: {ls_result}")
+    """opt_args = (probe_mols, out_keys, atypes_to_x_index, potential, targets)
     bounds = (0, np.inf)
-    eprint("Setup complete: beginning optimization.")
-    ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2,
+    eprint("Setup complete: beginning single-threaded optimization.")
+    ls_result = scipy.optimize.least_squares(cost_function_sequential, initial_x, jac='3-point', args=opt_args, verbose=2,
                                              bounds=bounds, xtol=tol)
-    eprint(f"Output of optimization: {ls_result}")
+    eprint(f"Output of optimization: {ls_result}")"""
 
 
 def get_molec_files(optinfo: str) -> Sequence[str]:
