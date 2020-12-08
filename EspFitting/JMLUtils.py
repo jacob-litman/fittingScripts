@@ -10,6 +10,7 @@ import numpy as np
 cryst_patt = re.compile(r"^ +(-?\d+\.\d+){6} *$")
 chargespin_patt = re.compile(r"^ *(-?\d+) +(-?\d+) *$")
 hartree = 627.5094736
+gauss_polar_convert = 0.52917721067 ** 3
 
 
 def eprint(*args, kwargs: dict = None):
@@ -236,3 +237,17 @@ def to_cartesian(x: np.ndarray, r: float) -> (np.ndarray, float, float, float, f
 
 def list2_to_arr(list2: Sequence[list]) -> np.ndarray:
     return np.array([item for sublist in list2 for item in sublist])
+
+
+gauss_float_patt = re.compile(r'-?0\.(\d+)D([+\-]\d{2})')
+
+
+def parse_gauss_float(g_num: str) -> float:
+    m = gauss_float_patt.match(g_num)
+    assert m
+    nums = m.group(1)
+    exp = int(m.group(2)) - 1
+    the_val = float(f"{nums[0]}.{nums[1:]}e{exp:d}")
+    if g_num[0] == "-":
+        the_val *= -1
+    return the_val

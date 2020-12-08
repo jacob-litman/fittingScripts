@@ -83,7 +83,8 @@ def cost_interior(x: np.ndarray, pm: StructureXYZ.StructXYZ, outkey: str, atype_
 
 
 def main_inner(mfis: Sequence[str], ptype_names: np.ndarray, initial_x: np.ndarray, tinker_path: str = '',
-               probe_types: Sequence[int] = None, tol: float = DEFAULT_TOL, maxiter: int = DEFAULT_MAX_ITER):
+               probe_types: Sequence[int] = None, tol: float = DEFAULT_TOL, maxiter: int = DEFAULT_MAX_ITER,
+               n_threads: int = None):
     # 1D lists associated with reference molecules
     ref_mols = []
     # 1D pre-flattened lists associated with probe molecules. Some are effectively duplicates based on reference molecule.
@@ -136,7 +137,7 @@ def main_inner(mfis: Sequence[str], ptype_names: np.ndarray, initial_x: np.ndarr
                 # Will be many shallow copies.
                 atypes_to_x_index.append(atype_map)
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as executor:
         opt_args = (probe_mols, out_keys, atypes_to_x_index, potential, targets, executor)
         bounds = (0, np.inf)
         eprint("Setup complete: beginning optimization.")
@@ -181,6 +182,8 @@ def main():
     # parser.add_argument('-x', type=Sequence[float], default=None, help='Manually specify starting polarizabilities')
     parser.add_argument('-i', '--maxiter', dest='max_iter', type=int, default=250, help='Maximum iterations of the '
                                                                                         'optimizer')
+    parser.add_argument('-n', '--nthreads', dest='n_threads', type=int, default=None,
+                        help='Number of Tinker processes to run in parallel')
     parser.add_argument('--opt_info', dest='optimize_info', type=str, default='molecules.txt',
                         help='File containing paths to molecules (i.e. path/to/QM_REF.xyz)')
 
@@ -191,7 +194,7 @@ def main():
     # TODO: Not hard-coded
     ptype_names, init_x = read_optinfo('polartype-define.txt')
     main_inner(mfis, ptype_names, init_x, tinker_path=args.tinker_path, probe_types=[args.probe_type], tol=args.tol,
-               maxiter=args.max_iter)
+               maxiter=args.max_iter, n_threads=args.n_threads)
 
 
 if __name__ == "__main__":
