@@ -2,7 +2,7 @@
 import argparse
 import numpy as np
 import re
-from JMLUtils import parse_gauss_float, gauss_polar_convert
+from JMLUtils import parse_gauss_float, gauss_polar_convert, eprint
 from enum import Enum, auto
 
 mname_patt = re.compile(r'^(\d{3})_.+_.+$')
@@ -65,12 +65,12 @@ def parse_tinker_mpol(fname: str) -> np.ndarray:
                 ret_arr[2] = float(toks[1])
                 ret_arr[4] = float(toks[2])
                 toks = r.readline().strip().split()
-                assert np.isclose(ret_arr[2], float(toks[0]))
+                assert np.isclose(ret_arr[2], float(toks[0]), atol=1E-4)
                 ret_arr[3] = float(toks[1])
                 ret_arr[5] = float(toks[2])
                 toks = r.readline().strip().split()
-                assert np.isclose(ret_arr[4], float(toks[0]))
-                assert np.isclose(ret_arr[5], float(toks[1]))
+                assert np.isclose(ret_arr[4], float(toks[0]), atol=1E-4)
+                assert np.isclose(ret_arr[5], float(toks[1]), atol=1E-4)
                 ret_arr[6] = float(toks[2])
             elif line.startswith("Interactive Molecular Polarizability :"):
                 ret_arr[0] = float(line.split()[4])
