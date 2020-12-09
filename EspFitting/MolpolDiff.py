@@ -107,7 +107,7 @@ def diff_arr(fit_mp_fi: str, fit_mp_type: MolpolLog, ref_mp_fi: str,
 
 def format_arr(the_arr: np.ndarray, title: str) -> str:
     return f"{title},{the_arr[0]:.9f},{the_arr[1]:.9f},{the_arr[2]:.9f},{the_arr[3]:.9f},{the_arr[4]:.9f}," \
-           f"{the_arr[5]:.9f}"
+           f"{the_arr[5]:.9f},{the_arr[6]:.9f}"
 
 
 def main_inner(fit_mp_fi: str, ref_mp_fi: str, fit_mp_type: MolpolLog = None, ref_mp_type: MolpolLog = None):
