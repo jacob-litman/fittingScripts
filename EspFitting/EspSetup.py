@@ -107,7 +107,7 @@ def main():
     eprint("Step 2: writing key files with probe (with reference and uncharged solutes)")
     probe_type = xyz_in.get_default_probetype()
 
-    atype_out = f'atom        {probe_type[0]:>5d}  {probe_type[1]:>5d}  {probe_type[2]:>3s}     {probe_type[3]}      ' \
+    atype_out = f'atom        {probe_type[0]:>5d}  {probe_type[1]:>5d}  {probe_type[2]:>3s}     "{probe_type[3]}"      ' \
                 f'{probe_type[4]:>4d} {probe_type[5]:>9.3f}   {probe_type[6]:>2d}\n'
     vdw_out = f'vdw     {probe_type[1]:>5d}  0.0100   0.0000\n'
     polarize_out = f'polarize         {probe_type[0]:>5d}          0.0000     0.0100\n'
