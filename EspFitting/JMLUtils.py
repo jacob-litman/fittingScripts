@@ -112,7 +112,7 @@ log_audit_files.n_log_audit = 0
 
 
 def dist2(coord1: np.ndarray, coord2: np.ndarray) -> float:
-    return np.square(np.array(coord1) - np.array(coord2)).sum()
+    return np.square(coord1 - coord2).sum()
 
 
 def get_probe_dirs(base_dir: str = ".") -> List[str]:
@@ -220,19 +220,6 @@ def extract_molspec(qm_fi: str, program: QMProgram) -> (int, int, np.ndarray, np
     coords = np.array(coords, dtype=np.float64)
     assert charge is not None and spin is not None and len(atoms) > 0 and len(atoms) == coords.shape[0] and coords.shape[1] == 3
     return charge, spin, np.array(atoms), coords
-
-
-def to_cartesian(x: np.ndarray, r: float) -> (np.ndarray, float, float, float, float):
-    assert x.shape[0] == 2 and x.ndim == 1 and r > 0
-    # Theta and phi
-    t = x[0]
-    p = x[1]
-    sin_t = math.sin(t)
-    cos_t = math.cos(t)
-    sin_p = math.sin(p)
-    cos_p = math.cos(p)
-    cart = np.array((r * sin_t * cos_p, r * sin_t * sin_p, r * cos_t))
-    return cart, sin_t, cos_t, sin_p, cos_p
 
 
 def list2_to_arr(list2: Sequence[list]) -> np.ndarray:
