@@ -247,3 +247,31 @@ def symlink_nofail(source: str, dest: str) -> bool:
         return False
     os.symlink(source, dest)
     return True
+
+
+singleton_patt = re.compile(r'^[0-9]+$')
+range_patt = re.compile(r'^([0-9]+)-([0-9]+)$')
+
+
+def parse_jml_range(range_str: str) -> Sequence[int]:
+    """Adaptation of my comma-separated, 1-indexed, inclusive ranges from FFX."""
+    toks = range_str.split(",")
+    indices = set()
+    for tok in toks:
+        if singleton_patt.match(tok):
+            indices.add(int(tok) - 1)
+        else:
+            m = range_patt.match(tok)
+            if m:
+                lb = int(m.group(1))
+                ub = int(m.group(2))
+                if (lb > ub):
+                    eprint(f"Warning: specified range {tok} has lb > ub!")
+                    temp = lb
+                    lb = ub
+                    ub = temp
+                for i in range(lb - 1, ub, 1):
+                    indices.add(i)
+            else:
+                eprint(f"Warning: unable to parse range {tok}")
+    return sorted(indices)

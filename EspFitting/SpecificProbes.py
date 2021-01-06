@@ -9,6 +9,7 @@ import JMLMath
 import math
 from StructureXYZ import StructXYZ
 from typing import Sequence
+import JMLUtils
 
 
 def place_ethene(infile: str, delta=4.0):
@@ -136,6 +137,19 @@ def place_halobenzene(infile: str, delta=4.0):
     xyzfi.write_out("HALOBENZENE-PROBE.xyz")
 
 
+def place_ring_generic(infile: str, ring_ats: str, delta=4.0):
+    at_indices = JMLUtils.parse_jml_range(ring_ats)
+    xyzfi = StructXYZ(infile)
+    n_index = len(at_indices)
+    assert at_indices[n_index - 1] < xyzfi.n_atoms
+    subset = np.take(xyzfi.coords, at_indices, axis=0)
+    centroid, normal = JMLMath.best_fit_plane(subset)
+    out_xyz = place_ring(xyzfi, centroid, normal, delta)
+    eprint(f"Placing probe at {out_xyz} based on atoms {at_indices}")
+    xyzfi.append_atom(xyzfi.get_default_probetype()[0], out_xyz)
+    xyzfi.write_out("RING-PROBE.xyz")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('molecule', nargs=1, type=str, help='Name of a molecule with special handling (e.g. AMMONIA)')
@@ -155,6 +169,10 @@ def main():
         place_ethene(inf)
     elif molec == "CYCLOPENTANE":
         place_cyclopentane(inf)
+    elif molec == "HALOBENZENE":
+        place_halobenzene(inf)
+    elif molec == "RING":
+        place_ring_generic(inf, *args.additional)
     else:
         raise ValueError(f"Could not find any probe placement script with name {args.molecule}!")
 
