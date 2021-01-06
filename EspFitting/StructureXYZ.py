@@ -15,7 +15,7 @@ import os
 adef_patt = re.compile(r'^atom +(\d+) +(\d+) +(\S+) +"?([^"]+)"? +(\d+) +(\d+\.\d+) +(\d+)\s*$')
 mpole_cont_patt = re.compile(r'^( +-?\d+\.\d+)+ *\\? *$')
 polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( [ 0-9]+ *)$')
-DEFAULT_PROBE_ANUM = 999
+DEFAULT_PROBE_ANUM = 1
 DEFAULT_PSI4_ITERS = 300
 # TODO: Either use the periodictable package (Pip) or flesh this out.
 elements = {1: 'H', 2: 'HE',
@@ -318,6 +318,7 @@ class StructXYZ:
             if self.probe_indices is not None and len(self.probe_indices) > 0:
                 f.write('Chrgfield = QMMM()\n')
                 for pi in self.probe_indices:
+                    eprint(f'Operating on probe index {pi}: coords {self.coords[pi]}')
                     f.write(f'Chrgfield.extern.addCharge({probe_charge:f}')
                     for i in range(3):
                         f.write(f',{self.coords[pi][i]:.6f}')

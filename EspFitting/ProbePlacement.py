@@ -2,12 +2,14 @@ import argparse
 import math
 import os
 import subprocess
+import shutil
 
 import numpy as np
 import scipy.optimize
 
 from JMLUtils import eprint
 from StructureXYZ import StructXYZ
+from typing import Sequence
 
 DEFAULT_HWT = 0.4
 DEFAULT_DIST = 4.0
@@ -82,7 +84,7 @@ def main():
 def main_inner(xyz_input: StructXYZ, keyf: str = None, out_file_base: str = DEFAULT_OUTFILE, probe_type = None,
                min_dist: float = DEFAULT_MIN_DIST, restrain_dist: float = DEFAULT_RESTRAIN_DIST,
                max_dist: float = DEFAULT_MAX_DIST, exp: int = DEFAULT_EXP, hwt: float = DEFAULT_HWT,
-               weight_weak: float = 1.0, xyzpdb: str = 'xyzpdb'):
+               weight_weak: float = 1.0, xyzpdb: str = 'xyzpdb', clobber_dirs: bool = False):
     assert len(xyz_input.probe_indices) == 0
     if probe_type is None:
         probe_type = xyz_input.get_default_probetype()[0]
@@ -103,19 +105,19 @@ def main_inner(xyz_input: StructXYZ, keyf: str = None, out_file_base: str = DEFA
 
     xyz_input.append_atom(probe_type, np.zeros(3))
 
-    probe_locs = np.zeros((n_real_ats, 3))
+    probe_locs = []
 
     for i in range(n_real_ats):
-        inner_loop(xyz_input, i, real_xyz, avoid_weight, probe_type, keyf, out_file_base, min_dist, restrain_dist,
-                   max_dist, exp, weight_weak, xyzpdb)
+        probe_locs.append(inner_loop(xyz_input, i, real_xyz, avoid_weight, probe_type, keyf, out_file_base, min_dist,
+                                     restrain_dist, max_dist, exp, weight_weak, xyzpdb, clobber_dir=clobber_dirs))
 
-    return probe_locs
+    return np.array(probe_locs, dtype=np.float64)
 
 
 def inner_loop(xyz_input: StructXYZ, ai: int, real_xyz: np.ndarray, avoid_weight: np.ndarray, probe_type: int,
                keyf: str = None, out_file_base: str = DEFAULT_OUTFILE, min_dist: float = DEFAULT_MIN_DIST,
                restrain_dist: float = DEFAULT_RESTRAIN_DIST, max_dist: float = DEFAULT_MAX_DIST, exp: int = DEFAULT_EXP,
-               weight_weak: float = 1.0, xyzpdb: str = 'xyzpdb'):
+               weight_weak: float = 1.0, xyzpdb: str = 'xyzpdb', clobber_dir: bool = False) -> Sequence[float]:
     assert 0 < min_dist <= restrain_dist < max_dist
     assert probe_type in xyz_input.probe_types
     assert exp > 1
@@ -184,6 +186,9 @@ def inner_loop(xyz_input: StructXYZ, ai: int, real_xyz: np.ndarray, avoid_weight
         xyz_input.coords[n_ats, :] = center_xyz
 
     assert lowest_position is not None
+    if clobber_dir and os.path.exists(atom_quick_id):
+        eprint(f"Replacing directory {atom_quick_id}")
+        shutil.rmtree(atom_quick_id)
     os.mkdir(atom_quick_id)
     xyz_input.coords[n_ats, :] = lowest_position
     outf = f"{atom_quick_id}{os.sep}{out_file_base}.xyz"
@@ -194,6 +199,8 @@ def inner_loop(xyz_input: StructXYZ, ai: int, real_xyz: np.ndarray, avoid_weight
         cmdstr = f"{xyzpdb} {outf} {keyf}\n"
         eprint(f"Calling {cmdstr}")
         subprocess.run([xyzpdb, outf, keyf])
+
+    return lowest_position
 
 
 def cost_jac(x, weights: np.ndarray, x_all: np.ndarray, index_center: int, exp: int, min_dist: float,

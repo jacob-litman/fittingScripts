@@ -9,7 +9,7 @@ import shutil
 
 from ComOptions import ComOptions
 from StructureXYZ import StructXYZ
-from JMLUtils import eprint, verbose_call
+from JMLUtils import eprint, verbose_call, symlink_nofail
 from OptionParser import OptParser
 from typing import List
 
@@ -68,7 +68,7 @@ def main():
                                                                                     'hydrogen distances')
     parser.add_argument('-e', dest='exp', type=int, default=3, help='Exponent for the square of distance in target '
                                                                     'function (i.e. exp in E = k*separation^(-2*exp)')
-    parser.add_argument('-i', dest='infile', type=str, default='ttt.xyz', help='Name of input .xyz file')
+    parser.add_argument('-i', dest='infile', type=str, default=None, help='Name of input .xyz file')
     parser.add_argument('--inKey', type=str, default=None, help='Name of input .key file (else from infile)')
     # Required options. Charge/spin are easily forgotten, which is why they're required.
     parser.add_argument('-c', dest='charge', type=int, required=True, help='Charge of the molecule. REQUIRED.')
@@ -77,16 +77,26 @@ def main():
     parser.add_argument('-t', dest='tinker_path', type=str, default='', help='Path to Tinker executables')
     parser.add_argument('-o', dest='opts_file', type=str, default=None,
                         help='File containing key=value properties: default locations: poltype.ini, espfit.ini')
+    parser.add_argument('--clobber', action='store_true', help='Over-write existing probe subdirectories')
 
     args = parser.parse_args()
+    input_file = args.infile
+    if input_file is None:
+        if os.path.exists('final.xyz'):
+            input_file = 'final.xyz'
+        elif os.path.exists('ttt.xyz'):
+            input_file = 'ttt.xyz'
+        else:
+            raise ValueError("No input file specified, and defaults final.xyz/ttt.xyz could not be found!")
+
     if args.inKey is None:
-        keyf = re.sub(r'\.xyz(?:_\d+)?$', '.key', args.infile)
+        keyf = re.sub(r'\.xyz(?:_\d+)?$', '.key', input_file)
         if not os.path.exists(keyf):
-            eprint("No key file found: exiting!")
+            eprint(f"No key file ({keyf}) found: exiting!")
             sys.exit(1)
     else:
         keyf = args.inKey
-    xyz_in = StructXYZ(args.infile, key_file=keyf)
+    xyz_in = StructXYZ(input_file, key_file=keyf)
     opts = OptParser(args.opts_file)
     n_physical = xyz_in.n_atoms
 
@@ -123,7 +133,8 @@ def main():
     xyz_in.write_key_old_neutral('PR_NREF.key', added_lines=addtl_lines)
 
     eprint("Step 3: placing probe")
-    probe_locs = ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type[0], keyf='QM_PR.key')
+    probe_locs = ProbePlacement.main_inner(xyz_in, out_file_base='QM_PR', probe_type=probe_type[0], keyf='QM_PR.key',
+                                           clobber_dirs=args.clobber)
 
     eprint("Step 4: creating probe subdirectories")
     probe_qm_opt = get_probe_comopts(args.charge, args.spin, opts)
@@ -135,18 +146,19 @@ def main():
         shutil.copy2('QM_PR.key', dirn)
         shutil.copy2(keyf, f"{dirn}QM_REF.key")
         xyz_in.coords[n_physical, :] = probe_locs[i, :]
+        eprint(f"Coordinates for {i},{dirn}:\n{xyz_in.coords}")
         write_probe_qm(xyz_in, opts, probe_qm_opt, dirn, args.probe_charge)
 
     tinker_path = args.tinker_path
     if not tinker_path.endswith(os.sep) and tinker_path != '':
         tinker_path += os.sep
     potential = tinker_path + 'potential'
-    eprint(f"Step 5: linking {args.infile} to QM_REF.xyz and writing out {grid_file}")
-    os.symlink(args.infile, 'QM_REF.xyz')
-    os.symlink(keyf, 'QM_REF.key')
+    eprint(f"Step 5: linking {input_file} to QM_REF.xyz and writing out {grid_file}")
+    symlink_nofail(input_file, 'QM_REF.xyz')
+    symlink_nofail(keyf, 'QM_REF.key')
     verbose_call([potential, '1', 'QM_REF.xyz', 'QM_REF.key'])
     if is_psi4:
-        os.symlink('QM_REF.grid', grid_file)
+        symlink_nofail('QM_REF.grid', grid_file)
 
     if not is_psi4:
         grid_file = 'QM_PR.grid'
@@ -156,7 +168,7 @@ def main():
         os.chdir(dirn)
         verbose_call([potential, '1', 'QM_PR.xyz', 'QM_PR.key'])
         if is_psi4:
-            os.symlink('QM_PR.grid', grid_file)
+            symlink_nofail('QM_PR.grid', grid_file)
         os.chdir("..")
 
 

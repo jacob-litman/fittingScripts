@@ -238,3 +238,12 @@ def parse_gauss_float(g_num: str) -> float:
     if g_num[0] == "-":
         the_val *= -1
     return the_val
+
+
+def symlink_nofail(source: str, dest: str) -> bool:
+    """Creates a symbolic link if none already exists. Intended to avoid raising an error when the symlink already
+    exists."""
+    if os.path.exists(dest):
+        return False
+    os.symlink(source, dest)
+    return True
