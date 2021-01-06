@@ -20,7 +20,7 @@ DEFAULT_PSI4_ITERS = 300
 # TODO: Either use the periodictable package (Pip) or flesh this out.
 elements = {1: 'H', 2: 'HE',
             3: 'LI', 4: 'BE', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 10: 'NE',
-            11: 'NA', 12: 'MG', 13: 'AL', 14: 'SI', 15: 'P', 16: 'S', 17: 'CL', 18: 'AR'}
+            11: 'NA', 12: 'MG', 13: 'AL', 14: 'SI', 15: 'P', 16: 'S', 17: 'CL', 18: 'AR', 35: 'CL'}
 
 DEFAULT_PROBE_DESC = "Probe Charge        "
 DEFAULT_PROBE_NAME = 'PC'
