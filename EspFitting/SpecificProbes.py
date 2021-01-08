@@ -73,9 +73,9 @@ def place_ring(xyzfi: StructXYZ, centroid: np.ndarray, normal: np.ndarray, delta
         min_dist_down = min(min_dist_down, ddown)
 
     if min_dist_down > min_dist_up:
-        return test_down
-    else:
         return test_up
+    else:
+        return test_down
 
 
 def place_ring_inner(xyzfi: StructXYZ, centroid: np.ndarray, normal: np.ndarray, delta: float = 4.0,
@@ -93,7 +93,9 @@ def place_ring_inner(xyzfi: StructXYZ, centroid: np.ndarray, normal: np.ndarray,
         dist = math.sqrt(np.sum(np.square(dx)))
 
         sin_g = (dist / delta) * math.sin(theta)
-        assert sin_g < 1.000001
+        if sin_g > 1.00001:
+            eprint(f"Skipping check of atom {i} due to sin_g {sin_g:.9f} > max 1.00001")
+            continue
         if sin_g >= 1.0:
             # In this case: gamma must be a right angle.
             gamma = 0.5 * math.pi
