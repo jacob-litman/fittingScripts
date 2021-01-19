@@ -3,6 +3,8 @@ import sys
 
 import numpy as np
 import re
+
+from openbabel import pybel
 from typing import Sequence
 from pathlib import Path
 from io import TextIOWrapper
@@ -29,7 +31,7 @@ DEFAULT_PROBE_MASS = 1.0
 
 class StructXYZ:
     def __init__(self, in_file: str, probe_types: Sequence[int] = None, key_file: str = None,
-                 load_polar_types: bool = False, polar_type_fi: str = None):
+                 load_polar_types: bool = False, polar_type_fi: str = None, autogen_mol2: bool = False):
         self.in_file = in_file
         with open(self.in_file, 'r') as f:
             in_line = f.readline()
@@ -94,6 +96,19 @@ class StructXYZ:
                         # TODO: Read more information.
                     in_line = f.readline()
 
+        self.mol2_f = re.sub(r'\.xyz(?:_\d+)?$', '.mol2', self.in_file)
+        if os.path.exists(self.mol2_f):
+            eprint(f"Generating OpenBabel representation from {self.mol2_f}")
+            self.ob_rep = next(pybel.readfile('mol2', self.mol2_f))
+        elif autogen_mol2:
+            eprint(f"Automatically generating .mol2 file {autogen_mol2} to generate an OpenBabel representation")
+            if self.key_file is None:
+                raise ValueError(f"Cannot auto-generate .mol2 file for {self.in_file} without a key file!")
+            verbose_call(['xyzmol2', self.in_file, '-k', self.key_file])
+            self.ob_rep = next(pybel.readfile('mol2', self.mol2_f))
+        else:
+            self.ob_rep = None
+
         self.polarization_types = None
         self.ptype_to_atype = None
         if load_polar_types:
@@ -123,6 +138,14 @@ class StructXYZ:
             return f'{ret_str} with no known key file'
         else:
             return f'{ret_str} with key file {self.key_file}'
+
+    def get_smiles(self, canonical: bool = True) -> str:
+        assert self.ob_rep is not None
+        if canonical:
+            format = 'can'
+        else:
+            format = 'smi'
+        return self.ob_rep.write(format).strip().split()[0]
 
     def get_atype_info(self, i: int) -> (int, int, str, str, int, float, int):
         assert self.def_atypes is not None
