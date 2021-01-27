@@ -27,7 +27,8 @@ class PolarType:
         except IOError as ioe:
             eprint(f"Failed to generate SMARTS pattern from tokens {toks}")
             raise ioe
-        self.atom_index = int(toks[2]) - 1
+        #self.atom_index = int(toks[2]) - 1
+        self.atom_indices = [int(subtok) - 1 for subtok in toks[2].split(",")]
         self.name = toks[3]
         self.initial_polarizability = float(toks[4])
         self.polarizability = self.initial_polarizability
@@ -57,8 +58,9 @@ class PtypeReader:
         for pt in self.ptypes:
             smart_matches = pt.smarts.findall(obm)
             for match in smart_matches:
-                atom = match[pt.atom_index] - 1
-                matches[atom].append(pt)
+                for ai in pt.atom_indices:
+                    atom = match[ai] - 1
+                    matches[atom].append(pt)
         for i, m in enumerate(matches):
             m.sort(key=PolarType.get_priority, reverse=True)
             if (verbose):
