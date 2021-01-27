@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 import argparse
-import numpy as np
 import re
-from JMLUtils import parse_gauss_float, gauss_polar_convert, eprint
 from enum import Enum, auto
+
+import numpy as np
+
+from JMLUtils import parse_gauss_float, gauss_polar_convert
 
 mname_patt = re.compile(r'^(\d{3})_.+_.+$')
 

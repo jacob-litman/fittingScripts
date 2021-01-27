@@ -1,17 +1,16 @@
+import os
+import re
 import subprocess
 import sys
+from io import TextIOWrapper
+from pathlib import Path
+from typing import Sequence
 
 import numpy as np
-import re
-
 from openbabel import pybel
-from typing import Sequence
-from pathlib import Path
-from io import TextIOWrapper
 
 from ComOptions import ComOptions
 from JMLUtils import eprint, version_file, cryst_patt, verbose_call
-import os
 
 # Captured: atom type, atom class, atom name, atom description, atomic number, mass, valency
 adef_patt = re.compile(r'^atom +(\d+) +(\d+) +(\S+) +"?([^"]+)"? +(\d+) +(\d+\.\d+) +(\d+)\s*$')
@@ -101,7 +100,7 @@ class StructXYZ:
             eprint(f"Generating OpenBabel representation from {self.mol2_f}")
             self.ob_rep = next(pybel.readfile('mol2', self.mol2_f))
         elif autogen_mol2:
-            eprint(f"Automatically generating .mol2 file {autogen_mol2} to generate an OpenBabel representation")
+            eprint("Automatically generating .mol2 file to generate an OpenBabel representation")
             if self.key_file is None:
                 raise ValueError(f"Cannot auto-generate .mol2 file for {self.in_file} without a key file!")
             verbose_call(['xyzmol2', self.in_file, '-k', self.key_file])

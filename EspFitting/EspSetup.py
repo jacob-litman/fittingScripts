@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 
 import argparse
-import re
 import os
-import sys
-import ProbePlacement
+import re
 import shutil
+import sys
+from typing import List
 
+import ProbePlacement
 from ComOptions import ComOptions
-from StructureXYZ import StructXYZ
 from JMLUtils import eprint, verbose_call, symlink_nofail
 from OptionParser import OptParser
-from typing import List
+from StructureXYZ import StructXYZ
 
 
 def write_init_qm(xyz_in: StructXYZ, charge: int, spin: int, opts: OptParser, fname: str = None):

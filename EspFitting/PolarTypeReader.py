@@ -1,12 +1,10 @@
 import argparse
-from StructureXYZ import StructXYZ
-from JMLUtils import eprint
-import openbabel
-from openbabel import pybel
-import numpy as np
-from typing import Sequence, Tuple, Dict
-import re
+from typing import Sequence
 
+from openbabel import pybel
+
+from JMLUtils import eprint
+from StructureXYZ import StructXYZ
 
 custom_smarts = {"A": "[#1,#6]", "B": "[N,O,F,S,Cl,Br]", "D": "[N,O,S]", "d": "[n,n+,o+,s+]", "E": "[#7,O,F,S,Cl,Br]"}
 

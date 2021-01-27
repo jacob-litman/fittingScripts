@@ -1,5 +1,6 @@
-import re
 import os
+import re
+
 from JMLUtils import eprint, parse_qm_program, QMProgram
 
 DEFAULT_OPTIONS = {'numproc': '4', 'maxmem': '12GB', 'maxdisk': '100GB', 'espmethod': 'PBE0',

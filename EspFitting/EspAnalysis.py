@@ -2,13 +2,14 @@
 
 import argparse
 import os
-import shutil
 import re
+import shutil
+from typing import Sequence, FrozenSet
+
+import SubPots
 from JMLUtils import eprint, verbose_call, name_to_atom, get_probe_dirs
 from OptionParser import OptParser
-from typing import Sequence, FrozenSet
 from Psi4GridToPot import psi4_grid2pot
-import SubPots
 
 mpolar_patt = re.compile(r'^((?:multipole|polarize)\s+\d+\s+)\d+\.\d+(\s.+)?$')
 scr_patt = re.compile(r'^ *psi4_io.set_default_path\(["\'](.+)["\']\) *$')
