@@ -9,6 +9,7 @@ from typing import Sequence
 import numpy as np
 from openbabel import pybel
 
+import JMLUtils
 from ComOptions import ComOptions
 from JMLUtils import eprint, version_file, cryst_patt, verbose_call
 
@@ -30,12 +31,17 @@ DEFAULT_PROBE_MASS = 1.0
 
 class StructXYZ:
     def __init__(self, in_file: str, probe_types: Sequence[int] = None, key_file: str = None,
-                 load_polar_types: bool = False, polar_type_fi: str = None, autogen_mol2: bool = False):
+                 load_polar_types: bool = False, polar_type_fi: str = None):
         self.in_file = in_file
         with open(self.in_file, 'r') as f:
             in_line = f.readline()
             self.header_line = in_line
-            self.n_atoms = int(in_line.strip().split()[0])
+            header_toks = in_line.strip().split()
+            self.n_atoms = int(header_toks[0])
+            if len(header_toks) > 1:
+                self.header_comments = header_toks[1:]
+            else:
+                self.header_comments = []
             skip_r = 1
             in_line = f.readline()
             cryst_match = cryst_patt.match(in_line)
@@ -95,17 +101,16 @@ class StructXYZ:
                         # TODO: Read more information.
                     in_line = f.readline()
 
-        self.mol2_f = re.sub(r'\.xyz(?:_\d+)?$', '.mol2', self.in_file)
-        if os.path.exists(self.mol2_f):
-            eprint(f"Generating OpenBabel representation from {self.mol2_f}")
-            self.ob_rep = next(pybel.readfile('mol2', self.mol2_f))
-        elif autogen_mol2:
-            eprint("Automatically generating .mol2 file to generate an OpenBabel representation")
-            if self.key_file is None:
-                raise ValueError(f"Cannot auto-generate .mol2 file for {self.in_file} without a key file!")
-            verbose_call(['xyzmol2', self.in_file, '-k', self.key_file])
-            self.ob_rep = next(pybel.readfile('mol2', self.mol2_f))
+        test_sdf = re.sub(r'\.xyz(?:_\d+)?$', '.sdf', self.in_file)
+        if os.path.exists(test_sdf):
+            eprint(f"Generating OpenBabel representation from SDF file {test_sdf}")
+            self.ob_rep = next(pybel.readfile('sdf', test_sdf))
+        elif len(self.header_comments) > 0:
+            eprint(f"Generating OpenBabel representation from input XYZ file {self.in_file}")
+            self.ob_rep = next(pybel.readfile('txyz', self.in_file))
         else:
+            eprint("Warning: OpenBabel representations cannot presently be generated if no comment exists in the .txyz "
+                   "header")
             self.ob_rep = None
 
         self.polarization_types = None
@@ -231,6 +236,9 @@ class StructXYZ:
             ret_str += f" {self.coords[atom_index][i]:.4f}"
         return ret_str
 
+    def get_atomic_no(self, atom_index: int) -> int:
+        return self.get_atype_info(atom_index)[4]
+
     def write_key_old(self, fname: str, added_lines: Sequence[str] = None):
         with open(self.key_file, 'r') as k:
             with open(fname, 'w') as f:
@@ -304,10 +312,8 @@ class StructXYZ:
         f.write(f"{com_opts.charge} {com_opts.spin}\n")
         for i in range(self.n_atoms):
             if i in self.probe_indices:
-                # eprint(f"Atom is likely a probe: not written as an atom: {self.format_atom(i)}")
                 continue
-            el = self.get_atype_info(i)[4]
-            el_name = elements[el]
+            el_name = elements[self.get_atomic_no(i)]
             f.write(f"{el_name:>2s}")
             for j in range(3):
                 f.write(f"{self.coords[i][j]:12.6f}")

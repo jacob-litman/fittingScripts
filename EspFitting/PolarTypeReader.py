@@ -6,7 +6,8 @@ from openbabel import pybel
 from JMLUtils import eprint
 from StructureXYZ import StructXYZ
 
-custom_smarts = {"A": "[#1,#6]", "B": "[N,O,F,S,Cl,Br]", "D": "[N,O,S]", "d": "[n,n+,o+,s+]", "E": "[#7,O,F,S,Cl,Br]"}
+#custom_smarts = {"B": "[N,O,F,S,Cl,Br]", "D": "[N,O,S]", "d": "[n,n+,o+,s+]", "E": "[#7,O,F,S,Cl,Br]"}
+custom_smarts = dict()
 
 
 def sub_custom_smarts(smarts: str) -> str:
@@ -21,7 +22,7 @@ class PolarType:
         toks = def_line.strip().split("\t")
         assert len(toks) == 6
         self.id = int(toks[0])
-        self.smarts_string = toks[1]
+        self.smarts_string = sub_custom_smarts(toks[1])
         try:
             self.smarts = pybel.Smarts(self.smarts_string)
         except IOError as ioe:
@@ -54,13 +55,21 @@ class PtypeReader:
     def all_match_mol(self, mol: StructXYZ, verbose: bool = False) -> Sequence[Sequence[PolarType]]:
         obm = mol.ob_rep
         assert obm is not None
-        matches = [[] for i in range(mol.n_atoms)]
+        matches = [[] for _ in range(mol.n_atoms)]
+
         for pt in self.ptypes:
             smart_matches = pt.smarts.findall(obm)
             for match in smart_matches:
-                for ai in pt.atom_indices:
+                # Assign this match to the first atom index listed, and to subsequent indices IFF they are of the same element.
+                atom = match[pt.atom_indices[0]] - 1
+                matches[atom].append(pt)
+                el = mol.get_atomic_no(atom)
+                for i in range(1, len(pt.atom_indices), 1):
+                    ai = pt.atom_indices[i]
                     atom = match[ai] - 1
-                    matches[atom].append(pt)
+                    if el == mol.get_atomic_no(atom):
+                        matches[atom].append(pt)
+
         for i, m in enumerate(matches):
             m.sort(key=PolarType.get_priority, reverse=True)
             if (verbose):
@@ -76,8 +85,13 @@ class PtypeReader:
             n_match = len(m_set)
             assert n_match > 0
             priority = m_set[0].priority
-            if n_match > 1 and m_set[1].priority >= priority:
-                raise ValueError(f"Multiple equal-priority matches for atom {mol.atom_names[i]}-{i} in {mol}:\n{m_set}")
+            id = m_set[0].id
+            for i in range(1, n_match, 1):
+                if m_set[i].priority < priority:
+                    break
+                elif m_set[i].id != id:
+                    raise ValueError(f"Multiple equal-priority, non-identical matches for atom {mol.atom_names[i]}-{i} "
+                                     f"in {mol}:\n{m_set}")
             nonredundant.append(m_set[0])
         return nonredundant
 
@@ -90,7 +104,7 @@ def main():
                                                                'matches')
 
     args = parser.parse_args()
-    xyz_s = StructXYZ(args.infile, autogen_mol2=True)
+    xyz_s = StructXYZ(args.infile)
     assert 'PC' not in xyz_s.atom_names
     ptyping = PtypeReader(args.ptype_fi)
     ptypes = ptyping.match_mol(xyz_s, args.verbose)
