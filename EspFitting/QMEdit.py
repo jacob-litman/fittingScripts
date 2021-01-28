@@ -56,6 +56,26 @@ def main():
 
 
 def main_inner(probe_types: Sequence[int] = None):
+    generate_molpol_jobs()
+
+
+def generate_molpol_jobs():
+    for root, dirs, files in os.walk('.'):
+        if "QM_REF.psi4" in files:
+            psi4_fi = os.path.join(root, "QM_REF.psi4")
+            txyz_fi = os.path.join(root, "QM_REF.xyz")
+            mspec = extract_molspec(psi4_fi, JMLUtils.QMProgram.PSI4)
+            txyz = StructXYZ(txyz_fi)
+            optp = OptionParser.OptParser()
+            optp.options['program'] = 'GAUSSIAN'
+            optp.rectify_oddities()
+            com_opts = ComOptions(mspec[0], mspec[1], optp)
+            com_opts.do_polar = True
+            outfile = os.path.join(root, 'molpols.com')
+            txyz.write_qm_job(com_opts, outfile, jname='molpols', write_fchk=True)
+
+
+def orig_main_inner(probe_types: Sequence[int] = None):
     if probe_types is None:
         probe_types = [StructureXYZ.DEFAULT_PROBE_TYPE]
     optp = OptionParser.OptParser()
