@@ -48,19 +48,51 @@ def main_inner(f1: str, f2: str, out: io.TextIOWrapper = sys.stdout, err: io.Tex
         else:
             header_comment = 'Addition.pot'
 
+    n_grid_points = -1
+    p1_header = False
     with open(f1, "r") as p1:
-        with open(f2, "r") as psub:
-            p1_line = p1.readline()
-            psub_line = psub.readline()
-            p1_toks = p1_line.strip().split()
-            out.write(f" {p1_toks[0]:>7s}  {header_comment}\n")
-            n_grid_points = int(p1_line.strip().split()[0])
-            assert n_grid_points == int(psub_line.strip().split()[0])
-            print(p1_line, end='')
+        line = p1.readline()
+        if line.strip().split()[0] == "1":
+            #eprint(f"File {f1} has no header.")
+            num_lines = 1
+        else:
+            num_lines = 0
+            n_grid_points = int(line.strip().split()[0])
+            p1_header = True
+
+        while p1.readline().strip() != "":
+            num_lines += 1
+
+        if p1_header:
+            assert num_lines == n_grid_points
+        else:
+            n_grid_points = num_lines
+
+    p2_header = False
+    with open(f2, "r") as p2:
+        line = p2.readline()
+        if line.strip().split()[0] == "1":
+            #eprint(f"File {f2} has no header.")
+            num_lines = 1
+        else:
+            num_lines = 0
+            p2_header = True
+
+        while p2.readline().strip() != "":
+            num_lines += 1
+        assert num_lines == n_grid_points
+
+    with open(f1, "r") as p1:
+        with open(f2, "r") as p2:
+            if p1_header:
+                p1.readline()
+            if p2_header:
+                p2.readline()
+            out.write(f" {n_grid_points:>7d}   {header_comment}\n")
             for i in range(n_grid_points):
                 p1_line = p1.readline()
                 p1_match = keep_patt.search(p1_line)
-                psub_line = psub.readline()
+                psub_line = p2.readline()
                 psub_match = keep_patt.search(psub_line)
 
                 pot = float(p1_match.group(2))

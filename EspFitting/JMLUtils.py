@@ -229,15 +229,21 @@ def list2_to_arr(list2: Sequence[list]) -> np.ndarray:
 gauss_float_patt = re.compile(r'-?0\.(\d+)D([+\-]\d{2})')
 
 
-def parse_gauss_float(g_num: str) -> float:
+def convert_gauss_float(g_num: str) -> str:
     m = gauss_float_patt.match(g_num)
-    assert m
+    if not m:
+        raise ValueError(f"String {g_num} is not a Gaussian/Tinker style floating-point number!")
+    neg_str = ""
+    if g_num[0] == "-":
+        neg_str = "-"
+
     nums = m.group(1)
     exp = int(m.group(2)) - 1
-    the_val = float(f"{nums[0]}.{nums[1:]}e{exp:d}")
-    if g_num[0] == "-":
-        the_val *= -1
-    return the_val
+    return f"{neg_str}{nums[0]}.{nums[1:]}e{exp:d}"
+
+
+def parse_gauss_float(g_num: str) -> float:
+    return float(convert_gauss_float(g_num))
 
 
 def symlink_nofail(source: str, dest: str) -> bool:

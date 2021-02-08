@@ -159,16 +159,16 @@ def main():
     verbose_call([potential, '1', 'QM_REF.xyz', 'QM_REF.key'])
     if is_psi4:
         symlink_nofail('QM_REF.grid', grid_file)
-
-    if not is_psi4:
         grid_file = 'QM_PR.grid'
+
     eprint(f"Step 6: Writing out {grid_file} in probe subdirectories")
     for pid in physical_atom_ids:
         dirn = f"{pid}{os.sep}"
         os.chdir(dirn)
         verbose_call([potential, '1', 'QM_PR.xyz', 'QM_PR.key'])
         if is_psi4:
-            symlink_nofail('QM_PR.grid', grid_file)
+            # I have _no idea_ why 'grid.dat' needs to be hardcoded.
+            symlink_nofail('QM_PR.grid', 'grid.dat')
         os.chdir("..")
 
 

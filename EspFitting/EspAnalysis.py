@@ -4,8 +4,13 @@ import argparse
 import os
 import re
 import shutil
+import sys
 from typing import Sequence, FrozenSet
+import subprocess
 
+import numpy as np
+
+import JMLUtils
 import SubPots
 from JMLUtils import eprint, verbose_call, name_to_atom, get_probe_dirs
 from OptionParser import OptParser
@@ -37,6 +42,87 @@ def check_files_present(probe_dirs: Sequence[str], dir_files: FrozenSet[str], su
     return missing_files
 
 
+tensor_elements = {"iso", "aniso", "xx", "yx", "yy", "zx", "zy", "zz"}
+default_mpol_out = "qm_molpols.csv"
+
+
+def parse_molpols(mpol_log: str = "molpols.log", mpol_out: str = default_mpol_out) -> bool:
+    if not os.path.exists(mpol_log):
+        eprint(f"Did not find log file {mpol_log}")
+        return False
+    with open(mpol_log, 'r') as r:
+        polarizes_found = False
+        polarizabilities = []
+
+        for line in r:
+            line = line.strip()
+            if line == "Dipole polarizability, Alpha (input orientation).":
+                polarizes_found = True
+            elif polarizes_found:
+                toks = line.split()
+                if toks[0] in tensor_elements:
+                    polarizability = JMLUtils.parse_gauss_float(toks[1])
+                    polarizability *= JMLUtils.gauss_polar_convert
+                    polarizabilities.append(polarizability)
+                    if toks[0] == "zz":
+                        polarizes_found = False
+
+        if len(polarizabilities) == 8:
+            with open(mpol_out, 'w') as w:
+                w.write("Isotropic,Anisotropic,xx,xy,yy,xz,yz,zz\n")
+                for i, p in enumerate(polarizabilities):
+                    if i == 0:
+                        w.write(str(p))
+                    elif i == 7:
+                        w.write(f",{p}\n")
+                    else:
+                        w.write(f",{p}")
+            return True
+        else:
+            eprint(f"Log file {mpol_log} did not contain polarizabilities!")
+            return False
+
+
+def compare_molpols(input_xyz: str, input_key: str, polarize: str = 'polarize', qm_mpol: str = default_mpol_out):
+    if not os.path.exists(qm_mpol) or not os.path.isfile(qm_mpol):
+        eprint(f"Molecular polarizabilities file {qm_mpol} does not exist or is not a file.")
+        return
+    assert input_xyz is not None and input_key is not None
+
+    eprint(f"Calling (with input capture): {polarize} {input_xyz} {input_key}")
+    output = subprocess.check_output([polarize, input_xyz, input_key])
+
+    found_tensor = False
+    tensor_lines = []
+    isotropic_pol = -1
+    for line in output.splitlines():
+        line = str(line, encoding=sys.getdefaultencoding()).strip()
+        if line.startswith("Molecular Polarizability Tensor"):
+            found_tensor = True
+        elif found_tensor:
+            if line.startswith("Polarizability Tensor Eigenvalues"):
+                found_tensor = False
+            toks = line.split()
+            if len(toks) == 3:
+                tensor_lines.append(toks)
+        elif line.startswith("Interactive Molecular Polarizability"):
+            toks = line.split()
+            isotropic_pol = float(toks[-1])
+
+    assert len(tensor_lines) == 3 and isotropic_pol >= 0
+    # Isotropic, xx, xy, yy, xz, yz, zz
+    mm_pols = [isotropic_pol, float(tensor_lines[0][0]), float(tensor_lines[0][1]), float(tensor_lines[1][1]),
+              float(tensor_lines[0][2]), float(tensor_lines[1][2]), float(tensor_lines[2][2])]
+    mm_tensor = np.array(mm_pols, dtype=np.float64)
+
+    # Skip the anisotropic element of the QM polarizabilities.
+    qm_tensor = np.genfromtxt(qm_mpol, skip_header=1, usecols=[0, 2, 3, 4, 5, 6, 7], delimiter=',', dtype=np.float64)
+
+    eprint(f"MM tensor: {mm_tensor}\nQM tensor: {qm_tensor}")
+    diff_tensor = mm_tensor - qm_tensor
+    eprint(f"Difference (MM - QM): {diff_tensor}")
+
+
 def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', probe_types: Sequence[int] = None):
     assert tinker_path is not None and gauss_path is not None
     probe_dirs = get_probe_dirs()
@@ -66,6 +152,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
     if not tinker_path.endswith(os.sep) and tinker_path != '':
         tinker_path += os.sep
     potential = tinker_path + "potential"
+    polarize = os.path.join(tinker_path, "polarize")
 
     if not gauss_path.endswith(os.sep) and gauss_path != '':
         gauss_path += os.sep
@@ -74,6 +161,9 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
 
     if not is_psi4:
         verbose_call([formchk, 'QM_REF.chk'])
+
+    parse_molpols()
+    compare_molpols('QM_REF.xyz', 'QM_REF.key', polarize=polarize)
 
     for pdir in probe_dirs:
         shutil.copy2('QM_REF.fchk', pdir)
@@ -107,8 +197,10 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
             eprint(f"Combining {esp_fi} and grid.dat into QM_PR.pot")
             psi4_grid2pot('QM_PR.pot', method=qm_method, esp=esp_fi)
 
+        # Symlink the grid file.
+        JMLUtils.symlink_nofail("QM_PR.grid", "PR_NREF.grid")
         # Write out PR_NREF.pot (probe charge only potential)
-        verbose_call([potential, "3", "PR_NREF.xyz", "Y"])
+        verbose_call([potential, "3", "PR_NREF.xyz", "PR_NREF.key", "Y", "PR_NREF.key"])
 
         # Add the probe background (PR_NREF.pot) to the QM potential to get QM-with-probe potential.
         eprint("Adding QM_PR.pot to PR_NREF.pot to generate QM_PR_BACK.pot")
@@ -119,7 +211,8 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
 
         # Write out how different the MM potential is from the QM potential (with probe).
         with open('unfit_diff.log', 'w') as f:
-            verbose_call([potential, "5", "QM_PR.xyz", "QM_PR_BACK.pot", "Y"], kwargs={'stdout': f})
+            verbose_call([potential, "5", "QM_PR.xyz", "QM_PR.key", "QM_PR_BACK.pot", "Y", "QM_PR.key"],
+                         kwargs={'stdout': f})
 
         # Using the with-probe grid, write out the QM reference potential (no probe).
         if is_psi4:
@@ -145,7 +238,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         # Possible OS incompatibility
         os.symlink('QM_PR.xyz', 'MM_PR.xyz')
         os.symlink('QM_PR.key', 'MM_PR.key')
-        verbose_call([potential, '3', 'MM_PR.xyz', 'Y'])
+        verbose_call([potential, '3', 'MM_PR.xyz', 'MM_PR.key', 'Y', 'MM_PR.key'])
 
         eprint("Generating MM_REF.pot")
         os.symlink('QM_PR.xyz', 'MM_REF.xyz')
@@ -168,7 +261,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
                             w.write(line)
                     else:
                         w.write(line)
-        verbose_call([potential, '3', 'MM_REF.xyz', 'Y'])
+        verbose_call([potential, '3', 'MM_REF.xyz', 'MM_REF.key', 'Y', 'MM_REF.key'])
 
         eprint("Generating MM_REF_BACK.pot (MM_REF with probe background added back in)")
         with open('MM_REF_BACK.pot', 'w') as f:
