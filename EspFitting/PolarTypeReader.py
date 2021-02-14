@@ -1,5 +1,5 @@
 import argparse
-from typing import Sequence
+from typing import Sequence, Mapping
 
 from openbabel import pybel
 
@@ -96,22 +96,47 @@ class PtypeReader:
         return nonredundant
 
 
+def main_inner(xyz_s: StructXYZ, verbose: bool, ptype_fi: str = None, ptyping: PtypeReader = None) -> \
+        (Sequence[PolarType], Mapping[int, int], PtypeReader):
+    assert 'PC' not in xyz_s.atom_names
+    if ptyping is None:
+        assert ptype_fi is not None
+        ptyping = PtypeReader(ptype_fi)
+
+    ptypes = ptyping.match_mol(xyz_s, verbose)
+    ptype_map = dict()
+    for i, pt in enumerate(ptypes):
+        atype = xyz_s.assigned_atypes[i]
+        if atype in ptype_map:
+            if ptype_map[atype] != pt.id:
+                raise ValueError(f"Attempted to assign polar type {pt.id} to type {atype}, already assigned to "
+                                 f"{ptype_map[atype]}!")
+        ptype_map[xyz_s.assigned_atypes[i]] = pt.id
+    if verbose:
+        eprint(f"Mapping: {ptype_map}")
+    return ptypes, ptype_map, ptyping
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('infile', type=str, help='File to test on.')
     parser.add_argument('ptype_fi', type=str, help='CSV file containing polar type definitions.')
     parser.add_argument('--verbose', action='store_true', help='Print out all matches, not just the highest-priority '
                                                                'matches')
-
     args = parser.parse_args()
     xyz_s = StructXYZ(args.infile)
-    assert 'PC' not in xyz_s.atom_names
-    ptyping = PtypeReader(args.ptype_fi)
-    ptypes = ptyping.match_mol(xyz_s, args.verbose)
+    ptypes, mapping, ptyping = main_inner(xyz_s, args.ptype_fi, args.verbose)
 
     eprint("\n")
-    for ptype in ptypes:
-        eprint(ptype)
+    for i, at in enumerate(xyz_s.assigned_atypes):
+        eprint(f"Atom:                  {xyz_s.atom_names[i]}-{i+1:d}")
+        eprint(f"  Type:                {at}")
+        eprint(f"  Polar type in array: {ptypes[i]}")
+        if args.verbose:
+            eprint(f"  Mapped to:           {mapping[at]}")
+        if mapping[at] != ptypes[i].id:
+            raise ValueError(f"Atom {i+1} had a bad mapping!")
+        eprint("")
 
 
 if __name__ == "__main__":
