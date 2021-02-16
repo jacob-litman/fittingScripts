@@ -166,7 +166,8 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
     compare_molpols('QM_REF.xyz', 'QM_REF.key', polarize=polarize)
 
     for pdir in probe_dirs:
-        shutil.copy2('QM_REF.fchk', pdir)
+        if not is_psi4:
+            shutil.copy2('QM_REF.fchk', pdir)
         os.chdir(pdir)
         at_name = re.sub(r"^\./", '', pdir)
         foc_atom = name_to_atom('QM_PR.xyz', at_name)
@@ -178,6 +179,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
             focus = True
             eprint(f"Operating in directory {pdir}, atom {foc_atom[1]}{foc_atom[0]}\n")
         if is_psi4:
+            # QM_PR.grid should already exist.
             esp_fi = 'QM_PR.grid_esp.dat'
         else:
             esp_fi = None
@@ -200,7 +202,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         # Symlink the grid file.
         JMLUtils.symlink_nofail("QM_PR.grid", "PR_NREF.grid")
         # Write out PR_NREF.pot (probe charge only potential)
-        verbose_call([potential, "3", "PR_NREF.xyz", "PR_NREF.key", "Y", "PR_NREF.key"])
+        JMLUtils.run_potential_3(potential, "PR_NREF")
 
         # Add the probe background (PR_NREF.pot) to the QM potential to get QM-with-probe potential.
         eprint("Adding QM_PR.pot to PR_NREF.pot to generate QM_PR_BACK.pot")
@@ -238,7 +240,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
         # Possible OS incompatibility
         os.symlink('QM_PR.xyz', 'MM_PR.xyz')
         os.symlink('QM_PR.key', 'MM_PR.key')
-        verbose_call([potential, '3', 'MM_PR.xyz', 'MM_PR.key', 'Y', 'MM_PR.key'])
+        JMLUtils.run_potential_3(potential, 'MM_PR')
 
         eprint("Generating MM_REF.pot")
         os.symlink('QM_PR.xyz', 'MM_REF.xyz')
@@ -261,7 +263,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
                             w.write(line)
                     else:
                         w.write(line)
-        verbose_call([potential, '3', 'MM_REF.xyz', 'MM_REF.key', 'Y', 'MM_REF.key'])
+        JMLUtils.run_potential_3(potential, 'MM_REF')
 
         eprint("Generating MM_REF_BACK.pot (MM_REF with probe background added back in)")
         with open('MM_REF_BACK.pot', 'w') as f:

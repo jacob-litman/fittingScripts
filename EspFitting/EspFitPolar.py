@@ -51,21 +51,32 @@ def check_finished_qm(dirn: str) -> bool:
 
 def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.StructXYZ]], out_keys: Sequence[str],
                   pt_maps: Sequence[Mapping[int, int]], potential: str, targets: Sequence[Sequence[np.ndarray]],
-                  executor: concurrent.futures.Executor, weights: np.ndarray = None) -> float:
+                  executor: concurrent.futures.Executor, weights: np.ndarray = None, sequential: bool = False) -> float:
     del_time = -time.time()
     tot_cost = 0
     costbundles = []
 
     if weights is None:
-        weights = np.ones_like(probe_mols)
+        weights = []
+        for pml in probe_mols:
+            wts = [1.0] * len(pml)
+            weights.append(wts)
 
     for i, pml in enumerate(probe_mols):
         for j, pm in enumerate(pml):
-            costbundles.append((x, pm, out_keys[i][j], pt_maps[i], potential, targets[i][j], weights[i][j]))
+            cbundle = (x, pm, out_keys[i][j], pt_maps[i], potential, targets[i][j], weights[i][j])
+            costbundles.append(cbundle)
 
-    futures = {executor.submit(cost_interior, *costbundle) for costbundle in costbundles}
-    for future in concurrent.futures.as_completed(futures):
-        tot_cost += future.result()
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    if sequential:
+        for cb in costbundles:
+            tot_cost += cost_interior(*cb)
+    else:
+        futures = {executor.submit(cost_interior, *costbundle) for costbundle in costbundles}
+        for future in concurrent.futures.as_completed(futures):
+            tot_cost += future.result()
 
     del_time += time.time()
     eprint(f"Function evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
@@ -84,7 +95,7 @@ def cost_interior(x: np.ndarray, pm: StructureXYZ.StructXYZ, outkey: str, atype_
 
 
 def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threads: int=None,
-               ref_files: Sequence[str] = None, maxiter: int = DEFAULT_MAX_ITER):
+               ref_files: Sequence[str] = None, tol: float = DEFAULT_TOL):
     ptyping = PolarTypeReader.PtypeReader(ptypes_fi)
 
     # Reference molecules: StructXYZ (QM_REF.xyz)
@@ -145,16 +156,16 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         num_probes = 0
         for sdire in os.scandir(dir):
             sdir = sdire.name
-            if not os.path.isdir(sdir) or not probe_dir_patt.match(sdir):
+            to_sdir = join(dir, sdir)
+            if not os.path.isdir(to_sdir) or not probe_dir_patt.match(sdir):
                 continue
 
-            to_sdir = join(dir, sdir)
             target = np.genfromtxt(join(to_sdir, 'MM_REF_BACK.pot'), usecols=pot_cols, skip_header=1, dtype=np.float64)
             target[:,3] += np.genfromtxt(join(to_sdir, 'qm_polarization.pot'), usecols=[4], skip_header=1, dtype=np.float64)
             tgts.append(target)
             num_probes += 1
 
-            pmols.append(join(to_sdir, 'QM_PR.xyz'))
+            pmols.append(StructureXYZ.StructXYZ(join(to_sdir, 'QM_PR.xyz')))
             e_inds.append(tot_grid_points)
             tot_grid_points += target.shape[0]
             o_keys.append(join(to_sdir, 'QM_PR.key_0'))
@@ -166,15 +177,16 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         out_keys.append(o_keys)
 
         wt = 1.0 / num_probes
-        weights.append([wt] * num_probes)
+        wts = [wt] * num_probes
+        weights.append(wts)
 
-        bounds = (0, np.inf)
-        tol = DEFAULT_TOL
+    bounds = (0, np.inf)
 
-    initial_x = np.ndarray([pt.initial_polarizability for pt in ptyping.ptypes], dtype=np.float64)
+    initial_x = [pt.initial_polarizability for pt in ptyping.ptypes]
+    initial_x = np.array(initial_x, dtype=np.float64)
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as executor:
-        opt_args = (probe_mols, out_keys, polar_mappings, potential, targets, executor)
+        opt_args = (probe_mols, out_keys, polar_mappings, potential, targets, executor, weights)
         eprint("Setup complete: beginning optimization")
         ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2, bounds=bounds, xtol=tol)
         eprint(f"Output of optimization: {ls_result}")
@@ -207,8 +219,8 @@ def main():
     parser.add_argument('-p', '--probetype', dest='probe_type', type=int, default=999, help='Probe atom type')
     parser.add_argument('-e', '--tol', dest='tol', type=float, default=None,
                         help='Cease optimization at this tolerance (otherwise algorithm-dependent default)')
-    parser.add_argument('-i', '--maxiter', dest='max_iter', type=int, default=250, help='Maximum iterations of the '
-                                                                                        'optimizer')
+    """parser.add_argument('-i', '--maxiter', dest='max_iter', type=int, default=250, help='Maximum iterations of the '
+                                                                                        'optimizer')"""
     parser.add_argument('-n', '--nthreads', dest='n_threads', type=int, default=None,
                         help='Number of Tinker processes to run in parallel')
     parser.add_argument('--polar_types', dest='ptypes_fi', type=str, default='polarTypes.tsv',
@@ -230,7 +242,8 @@ def main():
     else:
         ref_files = None
 
-    main_inner(tinker_path=args.tinker_path, ptypes_fi=args.ptypes_fi, n_threads = args.n_threads, ref_files=ref_files, maxiter=args.max_iter)
+    main_inner(tinker_path=args.tinker_path, ptypes_fi=args.ptypes_fi, n_threads = args.n_threads, ref_files=ref_files,
+               tol=args.tol)
 
 
 if __name__ == "__main__":
