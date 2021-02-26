@@ -83,14 +83,14 @@ def parse_molpols(mpol_log: str = "molpols.log", mpol_out: str = default_mpol_ou
             return False
 
 
-def compare_molpols(input_xyz: str, input_key: str, polarize: str = 'polarize', qm_mpol: str = default_mpol_out):
-    if not os.path.exists(qm_mpol) or not os.path.isfile(qm_mpol):
-        eprint(f"Molecular polarizabilities file {qm_mpol} does not exist or is not a file.")
-        return
-    assert input_xyz is not None and input_key is not None
+def mm_polarization_tensor(input_xyz: str, input_key: str, polarize: str = 'polarize') -> np.ndarray:
+    if not os.path.isfile(input_xyz):
+        raise ValueError(f"Input xyz {input_xyz} is not a file.")
+    if not os.path.isfile(input_key):
+        raise ValueError(f"Input key {input_key} is not a file.")
 
-    eprint(f"Calling (with input capture): {polarize} {input_xyz} {input_key}")
-    output = subprocess.check_output([polarize, input_xyz, input_key])
+    eprint(f"Calling (with input capture): {polarize} {input_xyz} -k {input_key}")
+    output = subprocess.check_output([polarize, input_xyz, "-k", input_key])
 
     found_tensor = False
     tensor_lines = []
@@ -112,11 +112,31 @@ def compare_molpols(input_xyz: str, input_key: str, polarize: str = 'polarize', 
     assert len(tensor_lines) == 3 and isotropic_pol >= 0
     # Isotropic, xx, xy, yy, xz, yz, zz
     mm_pols = [isotropic_pol, float(tensor_lines[0][0]), float(tensor_lines[0][1]), float(tensor_lines[1][1]),
-              float(tensor_lines[0][2]), float(tensor_lines[1][2]), float(tensor_lines[2][2])]
-    mm_tensor = np.array(mm_pols, dtype=np.float64)
+               float(tensor_lines[0][2]), float(tensor_lines[1][2]), float(tensor_lines[2][2])]
+    return np.array(mm_pols, dtype=np.float64)
 
+
+def qm_polarization_tensor(qm_mpol: str):
+    if not os.path.isfile(qm_mpol):
+        raise ValueError(f"QM molecular polarizability file {qm_mpol} is not a file.")
+    # Skip the anisotropic element: only use isotropic, xx, xy, yy, xz, yz, zz
+    return np.genfromtxt(qm_mpol, skip_header=1, usecols=[0, 2, 3, 4, 5, 6, 7], delimiter=',', dtype=np.float64)
+
+
+def compare_molpols(input_xyz: str, input_key: str, polarize: str = 'polarize', qm_mpol: str = default_mpol_out):
+    if not os.path.isfile(input_xyz):
+        eprint(f"Input xyz {input_xyz} is not a file.")
+        return
+    if not os.path.isfile(input_key):
+        eprint(f"Input key {input_key} is not a file.")
+        return
+    if not os.path.isfile(qm_mpol):
+        eprint(f"QM molecular polarizability file {qm_mpol} is not a file.")
+        return
+
+    mm_tensor = mm_polarization_tensor(input_xyz, input_key, polarize)
     # Skip the anisotropic element of the QM polarizabilities.
-    qm_tensor = np.genfromtxt(qm_mpol, skip_header=1, usecols=[0, 2, 3, 4, 5, 6, 7], delimiter=',', dtype=np.float64)
+    qm_tensor = qm_polarization_tensor(qm_mpol)
 
     eprint(f"MM tensor: {mm_tensor}\nQM tensor: {qm_tensor}")
     diff_tensor = mm_tensor - qm_tensor

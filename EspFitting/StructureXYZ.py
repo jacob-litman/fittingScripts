@@ -106,7 +106,7 @@ class StructXYZ:
             eprint(f"Generating OpenBabel representation from SDF file {test_sdf}")
             self.ob_rep = next(pybel.readfile('sdf', test_sdf))
         elif len(self.header_comments) > 0:
-            eprint(f"Generating OpenBabel representation from input XYZ file {self.in_file}")
+            # eprint(f"Generating OpenBabel representation from input XYZ file {self.in_file}")
             self.ob_rep = next(pybel.readfile('txyz', self.in_file))
         else:
             eprint("Warning: OpenBabel representations cannot presently be generated if no comment exists in the .txyz "
