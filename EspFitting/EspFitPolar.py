@@ -78,7 +78,11 @@ def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.Stru
     else:
         futures = {executor.submit(cost_interior, *costbundle) for costbundle in costbundles}
         for future in concurrent.futures.as_completed(futures):
-            tot_cost += future.result()
+            try:
+                tot_cost += future.result()
+            except Exception as exc:
+                eprint(f"Exception in parallel processing: {exc}")
+                raise exc
 
     del_time += time.time()
     if sequential:
@@ -202,7 +206,8 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
     initial_x = [pt.initial_polarizability for pt in ptyping.ptypes]
     initial_x = np.array(initial_x, dtype=np.float64)
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as executor:
+    #with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         opt_args = (probe_mols, out_keys, polar_mappings, potential, targets, executor, weights, sequential)
         eprint("Setup complete: beginning optimization")
         ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2,

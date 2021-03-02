@@ -1,5 +1,6 @@
 import argparse
 from typing import Sequence, Mapping
+import re
 
 from openbabel import pybel
 
@@ -20,7 +21,8 @@ def sub_custom_smarts(smarts: str) -> str:
 class PolarType:
     def __init__(self, def_line: str):
         toks = def_line.strip().split("\t")
-        assert len(toks) == 6
+        if len(toks) != 6:
+            raise ValueError(f"Invalid number of tokens for line {def_line}\nTokens read: {toks}")
         self.id = int(toks[0])
         self.smarts_string = sub_custom_smarts(toks[1])
         try:
@@ -28,7 +30,6 @@ class PolarType:
         except IOError as ioe:
             eprint(f"Failed to generate SMARTS pattern from tokens {toks}")
             raise ioe
-        #self.atom_index = int(toks[2]) - 1
         self.atom_indices = [int(subtok) - 1 for subtok in toks[2].split(",")]
         self.name = toks[3]
         self.initial_polarizability = float(toks[4])
@@ -49,7 +50,8 @@ class PtypeReader:
         self.ptypes = []
         with open(infile, 'r') as r:
             for line in r:
-                if not line.startswith("ID"):
+                line = re.sub(r'#.+', '', line).strip()
+                if not line.startswith("ID") and line != "":
                     self.ptypes.append(PolarType(line))
 
     def all_match_mol(self, mol: StructXYZ, verbose: bool = False) -> Sequence[Sequence[PolarType]]:
@@ -83,7 +85,8 @@ class PtypeReader:
         nonredundant = []
         for i, m_set in enumerate(all_matches):
             n_match = len(m_set)
-            assert n_match > 0
+            if n_match == 0:
+                raise ValueError(f"No matches for molecule {mol}")
             priority = m_set[0].priority
             id = m_set[0].id
             for i in range(1, n_match, 1):
