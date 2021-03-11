@@ -83,13 +83,15 @@ def parse_molpols(mpol_log: str = "molpols.log", mpol_out: str = default_mpol_ou
             return False
 
 
-def mm_polarization_tensor(input_xyz: str, input_key: str, polarize: str = 'polarize') -> np.ndarray:
+def mm_polarization_tensor(input_xyz: str, input_key: str, polarize: str = 'polarize',
+                           verbose: bool = False) -> np.ndarray:
     if not os.path.isfile(input_xyz):
         raise ValueError(f"Input xyz {input_xyz} is not a file.")
     if not os.path.isfile(input_key):
         raise ValueError(f"Input key {input_key} is not a file.")
 
-    eprint(f"Calling (with input capture): {polarize} {input_xyz} -k {input_key}")
+    if verbose:
+        eprint(f"Calling (with input capture): {polarize} {input_xyz} -k {input_key}")
     output = subprocess.check_output([polarize, input_xyz, "-k", input_key])
 
     found_tensor = False

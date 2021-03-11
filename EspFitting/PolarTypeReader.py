@@ -7,7 +7,6 @@ from openbabel import pybel
 from JMLUtils import eprint
 from StructureXYZ import StructXYZ
 
-#custom_smarts = {"B": "[N,O,F,S,Cl,Br]", "D": "[N,O,S]", "d": "[n,n+,o+,s+]", "E": "[#7,O,F,S,Cl,Br]"}
 custom_smarts = dict()
 
 
@@ -43,6 +42,28 @@ class PolarType:
         return f"Pattern {self.name:<30s}-{self.id:>4d}, priority {self.priority:>2d}, initial polarizability " \
                f"{self.initial_polarizability:7.4f}, SMARTS {self.smarts_string}"
 
+    def __lt__(self, other):
+        return self.id < other.id
+
+    def __le__(self, other):
+        return self.id <= other.id
+
+    def __eq__(self, other):
+        return self.id == other.id
+
+    def __ne__(self, other):
+        return self.id != other.id
+
+    def __ge__(self, other):
+        return self.id >= other.id
+
+    def __gt__(self, other):
+        return self.id > other.id
+
+    # TODO: More robust hash, particularly ensuring id gets replaced by an immutable value.
+    def __hash__(self):
+        return hash(self.id)
+
 
 class PtypeReader:
     def __init__(self, infile: str):
@@ -50,9 +71,10 @@ class PtypeReader:
         self.ptypes = []
         with open(infile, 'r') as r:
             for line in r:
-                line = re.sub(r'#.+', '', line).strip()
-                if not line.startswith("ID") and line != "":
-                    self.ptypes.append(PolarType(line))
+                line = line.strip()
+                if line == "" or line.startswith("ID") or line.startswith("#"):
+                    continue
+                self.ptypes.append(PolarType(line))
 
     def all_match_mol(self, mol: StructXYZ, verbose: bool = False) -> Sequence[Sequence[PolarType]]:
         obm = mol.ob_rep

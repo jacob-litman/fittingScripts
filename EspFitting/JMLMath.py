@@ -138,6 +138,7 @@ def best_fit_plane(points: np.ndarray) -> (np.ndarray, np.ndarray):
     eprint(f"Resulting plane: passing through {centroid} with normal vector {out_ijk}")
     return centroid, out_ijk
 
+
 def side_side_angle_triangle(b: float, c: float, beta: float, tol: float = 0.00001) -> np.ndarray:
     """Returns sides a, b, c and angles alpha, beta, and gamma given the side-side-angle solution. If there are
     non-unique solutions, the solution with obtuse gamma is returned as the second row. The tol parameter is used
@@ -169,3 +170,8 @@ def side_side_angle_triangle(b: float, c: float, beta: float, tol: float = 0.000
         alpha = math.pi - (beta + gamma)
         a = b * (sin(alpha) / sin(beta))
         return np.array([a, b, c, alpha, beta, gamma], dtype=np.float64)
+
+
+def divide_ignore_zero(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    c = np.divide(a, b, out=np.zeros_like(a), where=b!=0, dtype=np.float64)
+    return c

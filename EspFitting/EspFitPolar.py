@@ -2,6 +2,8 @@ import argparse
 import re
 import os
 from typing import Sequence, Mapping
+
+import JMLMath
 from JMLUtils import eprint, get_probe_dirs, version_file
 from os.path import join
 import StructureXYZ
@@ -23,7 +25,8 @@ molec_dir_patt = re.compile(r'^([0-9]{3})_(.+)_([^_]+)$')
 probe_dir_patt = re.compile(r'^[A-Z]+[1-9][0-9]*')
 
 
-def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[int, int], precis: int = 12):
+def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[int, int], submapping: Sequence[int],
+                 precis: int = 12):
     with open(in_key, 'r') as r:
         with open(out_key, 'w') as w:
             for line in r:
@@ -32,7 +35,10 @@ def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[in
                     assert m
                     atype = int(m.group(2).strip())
                     if atype in atype_map:
-                        out_polar = x[atype_map[atype] - 1]
+                        index = atype_map[atype] - 1
+                        submap_index = submapping[index]
+                        assert submap_index >= 0
+                        out_polar = x[submap_index]
                         w.write(f"{m.group(1)}{m.group(2)}{out_polar:.{precis}f}{m.group(4).rstrip()}\n")
                     else:
                         w.write(line)
@@ -53,7 +59,8 @@ def check_finished_qm(dirn: str) -> bool:
 
 def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.StructXYZ]], out_keys: Sequence[str],
                   pt_maps: Sequence[Mapping[int, int]], potential: str, targets: Sequence[Sequence[np.ndarray]],
-                  executor: concurrent.futures.Executor, weights: np.ndarray = None, sequential: bool = False) -> float:
+                  executor: concurrent.futures.Executor, submapping: Sequence[int], weights: np.ndarray = None,
+                  sequential: bool = False, verbose: bool = False) -> float:
     del_time = -time.time()
     tot_cost = 0
     costbundles = []
@@ -66,7 +73,7 @@ def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.Stru
 
     for i, pml in enumerate(probe_mols):
         for j, pm in enumerate(pml):
-            cbundle = (x, pm, out_keys[i][j], pt_maps[i], potential, targets[i][j], weights[i][j])
+            cbundle = (x, pm, out_keys[i][j], pt_maps[i], potential, targets[i][j], weights[i][j], submapping)
             costbundles.append(cbundle)
 
     sys.stdout.flush()
@@ -84,24 +91,27 @@ def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.Stru
                 eprint(f"Exception in parallel processing: {exc}")
                 raise exc
 
-    del_time += time.time()
-    if sequential:
-        eprint(f"Sequential evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
-    else:
-        eprint(f"Parallel evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
-    #eprint(f"Function evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
+    if verbose:
+        del_time += time.time()
+        if sequential:
+            eprint(f"Sequential evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
+        else:
+            eprint(f"Parallel evaluation in {del_time:.3f} sec: target value {tot_cost:.6g}")
     sys.stdout.flush()
     sys.stderr.flush()
     return tot_cost
 
 
 def cost_interior(x: np.ndarray, pm: StructureXYZ.StructXYZ, outkey: str, atype_map: Mapping[int, int], potential: str,
-                  target: np.ndarray, weight: float) -> float:
-    edit_keyfile(pm.key_file, outkey, x, atype_map)
+                  target: np.ndarray, weight: float, submapping: Sequence[int]) -> float:
+    edit_keyfile(pm.key_file, outkey, x, atype_map, submapping)
     mm_potential = pm.get_esp(potential, outkey)
     assert np.array_equal(mm_potential[:, 0:2], target[:, 0:2])
     mm_potential[:, 3] -= target[:, 3]
-    return weight * np.average(np.square(mm_potential[:, 3]))
+    esp_component = np.average(np.square(mm_potential[:, 3]))
+
+
+    return weight * esp_component
 
 
 def summarize_mpol_diff(mpol_errs: np.ndarray) -> np.ndarray:
@@ -113,10 +123,43 @@ def summarize_mpol_diff(mpol_errs: np.ndarray) -> np.ndarray:
     return summary
 
 
+def write_mpol_csv(outfi: str, vals: np.ndarray, molec_names: Sequence[str], ptype_ids: Sequence[Sequence[int]],
+                   precis: int = 5):
+    stats = summarize_mpol_diff(vals)
+    stat_titles = ['RMSE', 'MSE', 'MUE', 'SD']
+    assert precis < 15
+
+    with open(outfi, 'w') as w:
+        w.write("Molecule,Isotropic,xx,xy,yy,xz,yz,zz,Polar Type IDs\n")
+        for i, mname in enumerate(molec_names):
+            w.write(mname)
+            for j in range(7):
+                w.write(f",{vals[i][j]:.{precis}f}")
+            for pt_id in ptype_ids[i]:
+                w.write(f",{pt_id}")
+            w.write('\n')
+        w.write('\n')
+        for i, st in enumerate(stat_titles):
+            w.write(st)
+            for j in range(7):
+                w.write(f",{stats[i][j]:.{precis}f}")
+            w.write('\n')
+        w.write('\n')
+
+
+DEFAULT_ORIG_ABS_FI = 'quantum_molpols.csv'
+DEFAULT_ORIG_DIFF_FI = 'unfit_molpol_error.csv'
+DEFAULT_REFIT_DIFF_FI = 'refit_molpol_error.csv'
+DEFAULT_REL_ORIG_FI = 'unfit_molpol_relative.csv'
+DEFAULT_REL_REFIT_FI = 'refit_molpol_relative.csv'
+
+
 def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threads: int=None,
                ref_files: Sequence[str] = None, tol: float = DEFAULT_TOL, sequential: bool = False,
-               outfile: str = DEFAULT_OUTFILE, mpol_orig_fi = 'unfit_molpol_error.csv',
-               mpol_refit_fi = 'refit_molpol_error.csv'):
+               verbose: bool = False, outfile: str = DEFAULT_OUTFILE, qm_fi = DEFAULT_ORIG_ABS_FI,
+               mpol_orig_fi = DEFAULT_ORIG_DIFF_FI, mpol_refit_fi = DEFAULT_REFIT_DIFF_FI,
+               rel_orig_fi = DEFAULT_REL_ORIG_FI, rel_refit_fi = DEFAULT_REL_REFIT_FI):
+
     ptyping = PolarTypeReader.PtypeReader(ptypes_fi)
 
     # Reference molecules: StructXYZ (QM_REF.xyz)
@@ -125,6 +168,8 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
     polar_mappings = []
     # Number of probes for each molecule.
     nprobes = []
+    # Set of all used polar types.
+    ptypes_used = set()
 
     # 2D arrays
     # How much to weight each given probe (initially just 1 / no. of probes for this molecule)
@@ -137,6 +182,8 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
     esp_indices = []
     # Output .key files (QM_PR.key_0)
     out_keys = []
+    # The (unique) polar types associated with each molecule.
+    ptype_ids = []
 
     tot_grid_points = 0
 
@@ -168,6 +215,9 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         ptypes_i, mapping_i, pt2 = PolarTypeReader.main_inner(sqmr, False, ptyping=ptyping)
         assert pt2 == ptyping
         polar_mappings.append(mapping_i)
+        these_pts = [pt.id for pt in sorted(set(ptypes_i))]
+        ptype_ids.append(these_pts)
+        ptypes_used.update(these_pts)
 
         tgts = []
         pmols = []
@@ -201,14 +251,25 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         wts = [wt] * num_probes
         weights.append(wts)
 
-    bounds = (0, np.inf)
+    # Following shenanigans are to eliminate unused polarizabilities from the fitting, eliminating needless target
+    # evaluations.
+    submapping = [-1 for pt in ptyping.ptypes]
+    n_pt_used = 0
+    initial_x = []
+    for i in sorted(ptypes_used):
+        submapping[i-1] = n_pt_used
+        initial_x.append(ptyping.ptypes[i-1].initial_polarizability)
+        #initial_x.append(ptyping.ptypes[submapping[i-1]].initial_polarizability)
+        n_pt_used += 1
 
-    initial_x = [pt.initial_polarizability for pt in ptyping.ptypes]
+    eprint(f"submapping: {submapping}\ninitial X: {initial_x}\nptypes_used: {ptypes_used}")
     initial_x = np.array(initial_x, dtype=np.float64)
 
-    #with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as executor:
+    bounds = (0, np.inf)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
-        opt_args = (probe_mols, out_keys, polar_mappings, potential, targets, executor, weights, sequential)
+        opt_args = (probe_mols, out_keys, polar_mappings, potential, targets, executor, submapping, weights, sequential,
+                    verbose)
         eprint("Setup complete: beginning optimization")
         ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2,
                                                  bounds=bounds, xtol=tol)
@@ -218,10 +279,11 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         with open(outfile, 'w') as w:
             w.write("ID\tSMARTS\tName\tFit Polarizabiliities\tInitial Polarizabilities\tDelta Polarizability\n")
             for i, ptype in enumerate(ptyping.ptypes):
-                ptype.polarizability = x[i]
-                del_pol = ptype.polarizability - ptype.initial_polarizability
-                w.write(f"{ptype.id}\t{ptype.smarts_string}\t{ptype.name}\t{x[i]:9.6f}"
-                        f"\t{ptype.initial_polarizability:9.6f}\t{del_pol:9.6f}\n")
+                if submapping[i] >= 0:
+                    ptype.polarizability = x[submapping[i]]
+                    del_pol = ptype.polarizability - ptype.initial_polarizability
+                    w.write(f"{ptype.id}\t{ptype.smarts_string}\t{ptype.name}\t{x[submapping[i]]:9.6f}"
+                            f"\t{ptype.initial_polarizability:9.6f}\t{del_pol:9.6f}\n")
 
         qm_tensors = []
         orig_tensors = []
@@ -231,11 +293,7 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         for i, rdir in enumerate(ref_dirs):
             qmr_xyz = join(rdir, 'QM_REF.xyz')
             orig_key = join(rdir, 'QM_REF.key')
-            #fit_key = join(rdir, 'QM_REF.key_0')
             fit_key = out_keys[i][0]
-            eprint(f"{qmr_xyz} existence: {os.path.exists(qmr_xyz)}")
-            eprint(f"{orig_key} existence: {os.path.exists(orig_key)}")
-            eprint(f"{fit_key} existence: {os.path.exists(fit_key)}")
             assert os.path.isfile(qmr_xyz) and os.path.isfile(orig_key) and os.path.isfile(fit_key)
             qm_mp = join(rdir, 'qm_molpols.csv')
             if not os.path.isfile(qm_mp):
@@ -263,52 +321,14 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         orig_diff = orig_tensors - qm_tensors
         refit_diff = refit_tensors - qm_tensors
 
-        orig_stats = summarize_mpol_diff(orig_diff)
-        refit_stats = summarize_mpol_diff(refit_diff)
-        stat_titles = ['RMSE', 'MSE', 'MUE', 'SD']
+        orig_rel = JMLMath.divide_ignore_zero(orig_diff, qm_tensors)
+        refit_rel = JMLMath.divide_ignore_zero(refit_diff, qm_tensors)
 
-        noln_epr_kw = {'end': ''}
-
-        eprint("Original molecular polarizability errors\n\n")
-        with open(mpol_orig_fi, 'w') as w:
-            eprint(f"{'Molecule':<20s}{'Isotropic':>15s}{'xx':>15s}{'xy':>15s}{'yy':>15s}{'xz':>15s}{'yz':>15s}{'zz':>15s}")
-            w.write("Molecule,Isotropic,xx,xy,yy,xz,yz,zz\n")
-            for i, mname in enumerate(molec_names):
-                eprint(f"{mname:<20s}", kwargs=noln_epr_kw)
-                w.write(mname)
-                for j in range(7):
-                    eprint(f"   {orig_diff[i][j]:12.9f}", kwargs=noln_epr_kw)
-                    w.write(f",{orig_diff[i][j]:12.9f}")
-                eprint("")
-                w.write('\n')
-            for i, st in enumerate(stat_titles):
-                eprint(f"{st:<20s}", kwargs=noln_epr_kw)
-                w.write(st)
-                for j in range(7):
-                    eprint(f"   {orig_stats[i][j]:12.9f}", kwargs=noln_epr_kw)
-                    w.write(f",{orig_stats[i][j]:12.9f}")
-                eprint("")
-                w.write('\n')
-
-
-        eprint("\n\nRefit molecular polarizability errors\n\n")
-        with open(mpol_refit_fi, 'w') as w:
-            for i, mname in enumerate(molec_names):
-                eprint(f"{mname:<20s}", kwargs=noln_epr_kw)
-                w.write(mname)
-                for j in range(7):
-                    eprint(f"   {refit_diff[i][j]:12.9f}", kwargs=noln_epr_kw)
-                    w.write(f",{orig_diff[i][j]:12.9f}")
-                eprint("")
-                w.write('\n')
-            for i, st in enumerate(stat_titles):
-                eprint(f"{st:<20s}", kwargs=noln_epr_kw)
-                w.write(st)
-                for j in range(7):
-                    eprint(f"   {refit_stats[i][j]:12.9f}", kwargs=noln_epr_kw)
-                    w.write(f",{refit_stats[i][j]:12.9f}")
-                eprint("")
-                w.write('\n')
+        write_mpol_csv(qm_fi, qm_tensors, molec_names, ptype_ids)
+        write_mpol_csv(mpol_orig_fi, orig_diff, molec_names, ptype_ids)
+        write_mpol_csv(mpol_refit_fi, refit_diff, molec_names, ptype_ids)
+        write_mpol_csv(rel_orig_fi, orig_rel, molec_names, ptype_ids)
+        write_mpol_csv(rel_refit_fi, refit_rel, molec_names, ptype_ids)
 
 
 def get_molec_files(optinfo: str) -> Sequence[str]:
@@ -350,6 +370,8 @@ def main():
                         help='Run potential commands sequentially (single-threaded: over-rides n_threads)')
     parser.add_argument('-o', '--output', dest='outfile', type=str, default=DEFAULT_OUTFILE,
                         help='File to write output (tab-separated values) to.')
+    parser.add_argument('-v', '--verbose', action='store_true', dest='verbose',
+                        help='Print extra information (particularly timings for each target function evaluation).')
 
     args = parser.parse_args()
     mfis = get_molec_files(args.optimize_info)
@@ -366,7 +388,7 @@ def main():
         ref_files = None
 
     main_inner(tinker_path=args.tinker_path, ptypes_fi=args.ptypes_fi, n_threads = args.n_threads, ref_files=ref_files,
-               tol=args.tol, sequential=args.sequential)
+               tol=args.tol, sequential=args.sequential, verbose=args.verbose)
 
 
 if __name__ == "__main__":
