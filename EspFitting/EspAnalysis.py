@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 from typing import Sequence, FrozenSet
 import subprocess
 
@@ -99,19 +100,39 @@ def mm_polarization_tensor(input_xyz: str, input_key: str, polarize: str = 'pola
     isotropic_pol = -1
     for line in output.splitlines():
         line = str(line, encoding=sys.getdefaultencoding()).strip()
-        if line.startswith("Molecular Polarizability Tensor"):
+        #Total Polarizability Tensor
+        if line.startswith("Molecular Polarizability Tensor") or line.startswith("Total Polarizability Tensor"):
             found_tensor = True
+        elif line.startswith("Interactive Molecular Polarizability") or line.startswith("Interactive Total Polarizability"):
+            toks = line.split()
+            isotropic_pol = float(toks[-1])
         elif found_tensor:
             if line.startswith("Polarizability Tensor Eigenvalues"):
                 found_tensor = False
             toks = line.split()
             if len(toks) == 3:
                 tensor_lines.append(toks)
-        elif line.startswith("Interactive Molecular Polarizability"):
-            toks = line.split()
-            isotropic_pol = float(toks[-1])
+                if len(tensor_lines) == 3:
+                    found_tensor = False
 
-    assert len(tensor_lines) == 3 and isotropic_pol >= 0
+    if len(tensor_lines) != 3:
+        id = threading.get_ident()
+        message = f"{id}: Error in reading Tinker molecular polarizability output: expected 3 tensor lines, found " \
+                  f"{len(tensor_lines)}"
+        eprint(f"Thread {id}: Printing output from erroneous Tinker polarize output")
+        for line in output.splitlines():
+            eprint(f"{id}: {str(line, encoding=sys.getdefaultencoding()).strip()}")
+        raise ValueError(message)
+
+    if isotropic_pol <= 0:
+        id = threading.get_ident()
+        message = f"{id}: Error in reading Tinker molecular polarizability output: expected isotropic polarizability " \
+                  f">= 0, found {isotropic_pol}"
+        eprint(f"Thread {id}: Printing output from erroneous Tinker polarize output")
+        for line in output.splitlines():
+            eprint(f"{id}: {str(line, encoding=sys.getdefaultencoding()).strip()}")
+        raise ValueError(message)
+
     # Isotropic, xx, xy, yy, xz, yz, zz
     mm_pols = [isotropic_pol, float(tensor_lines[0][0]), float(tensor_lines[0][1]), float(tensor_lines[1][1]),
                float(tensor_lines[0][2]), float(tensor_lines[1][2]), float(tensor_lines[2][2])]

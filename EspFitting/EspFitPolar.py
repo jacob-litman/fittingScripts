@@ -23,6 +23,7 @@ pot_cols = [1, 2, 3, 4]
 polarize_patt = re.compile(r'^(polarize\s+)(\d+\s+)(\d+\.\d+)(\s+.+)$')
 molec_dir_patt = re.compile(r'^([0-9]{3})_(.+)_([^_]+)$')
 probe_dir_patt = re.compile(r'^[A-Z]+[1-9][0-9]*')
+DEFAULT_MPOL_WT = 0.001
 
 
 def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[int, int], submapping: Sequence[int],
@@ -60,7 +61,8 @@ def check_finished_qm(dirn: str) -> bool:
 def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.StructXYZ]], out_keys: Sequence[str],
                   pt_maps: Sequence[Mapping[int, int]], potential: str, targets: Sequence[Sequence[np.ndarray]],
                   executor: concurrent.futures.Executor, submapping: Sequence[int], weights: np.ndarray = None,
-                  sequential: bool = False, verbose: bool = False) -> float:
+                  sequential: bool = False, verbose: bool = False, qm_tensors: Sequence[np.ndarray] = None,
+                  mpol_wt: float = DEFAULT_MPOL_WT) -> float:
     del_time = -time.time()
     tot_cost = 0
     costbundles = []
@@ -73,7 +75,8 @@ def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.Stru
 
     for i, pml in enumerate(probe_mols):
         for j, pm in enumerate(pml):
-            cbundle = (x, pm, out_keys[i][j], pt_maps[i], potential, targets[i][j], weights[i][j], submapping)
+            cbundle = (x, pm, out_keys[i][j], pt_maps[i], potential, targets[i][j], weights[i][j], submapping,
+                       qm_tensors[i], mpol_wt)
             costbundles.append(cbundle)
 
     sys.stdout.flush()
@@ -102,16 +105,52 @@ def cost_function(x: np.ndarray, probe_mols: Sequence[Sequence[StructureXYZ.Stru
     return tot_cost
 
 
+DEFAULT_MPOL_COMPONENT_WEIGHTS = np.array([1.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25], dtype=np.float64)
+
+
 def cost_interior(x: np.ndarray, pm: StructureXYZ.StructXYZ, outkey: str, atype_map: Mapping[int, int], potential: str,
-                  target: np.ndarray, weight: float, submapping: Sequence[int]) -> float:
+                  target: np.ndarray, weight: float, submapping: Sequence[int], qm_tensor: np.ndarray,
+                  mpol_wt: float, polarize: str = 'polarize') -> float:
     edit_keyfile(pm.key_file, outkey, x, atype_map, submapping)
     mm_potential = pm.get_esp(potential, outkey)
     assert np.array_equal(mm_potential[:, 0:2], target[:, 0:2])
     mm_potential[:, 3] -= target[:, 3]
+    assert np.allclose(mm_potential[:, 0:2], target[:, 0:2])
     esp_component = np.average(np.square(mm_potential[:, 3]))
 
+    mm_tensor = EspAnalysis.mm_polarization_tensor(pm.in_file, outkey, polarize, False)
+    del_tensor = qm_tensor - mm_tensor
+    del_tensor = np.sqrt(np.square(del_tensor) * DEFAULT_MPOL_COMPONENT_WEIGHTS)
+    tensor_component = np.sum(del_tensor)
 
-    return weight * esp_component
+    return weight * (esp_component + (mpol_wt * tensor_component))
+
+
+def write_cost(mol, keyfile: str, mm_ref_back = 'MM_REF_BACK.pot', qm_pol = 'qm_polarization.pot', qm_mpol_fi: str = None, potential: str = 'potential', polarize: str = 'polarize', write_grid_points: bool = False):
+    """Write out components of the cost function"""
+    if isinstance(mol, str):
+        mol = StructureXYZ.StructXYZ(mol)
+    assert isinstance(mol, StructureXYZ.StructXYZ)
+
+    target = np.genfromtxt(mm_ref_back, usecols=pot_cols, skip_header=1, dtype=np.float64)
+    eprint(f"Target shape: {target.shape}")
+    target[:,3] += np.genfromtxt(qm_pol, usecols=[4], skip_header=1, dtype=np.float64)
+    eprint(f"Updated target shape: {target.shape}")
+
+    qm_tensor = EspAnalysis.qm_polarization_tensor(qm_mpol_fi)
+    mm_tensor = EspAnalysis.mm_polarization_tensor(mol.in_file, keyfile, polarize, False)
+
+    curr_esp = mol.get_esp(potential, keyfile)
+    eprint(f"curr_esp shape: {curr_esp.shape}")
+    assert np.allclose(curr_esp[:,0:2], target[:,0:2])
+    diff1 = curr_esp[:, 3] - target[:, 3]
+    diff2 = curr_esp[:,3] + target[:,3]
+    d1_target = np.average(np.square(diff1))
+    d2_target = np.average(np.square(diff2))
+    assert d1_target < d2_target
+
+    del_tensor = qm_tensor - mm_tensor
+    eprint(f"ESP difference: {d1_target}\nTensor difference: {del_tensor}")
 
 
 def summarize_mpol_diff(mpol_errs: np.ndarray) -> np.ndarray:
@@ -152,13 +191,15 @@ DEFAULT_ORIG_DIFF_FI = 'unfit_molpol_error.csv'
 DEFAULT_REFIT_DIFF_FI = 'refit_molpol_error.csv'
 DEFAULT_REL_ORIG_FI = 'unfit_molpol_relative.csv'
 DEFAULT_REL_REFIT_FI = 'refit_molpol_relative.csv'
+DEFAULT_QM_MOLPOL_FI = 'qm_molpols.csv'
 
 
 def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threads: int=None,
                ref_files: Sequence[str] = None, tol: float = DEFAULT_TOL, sequential: bool = False,
                verbose: bool = False, outfile: str = DEFAULT_OUTFILE, qm_fi = DEFAULT_ORIG_ABS_FI,
                mpol_orig_fi = DEFAULT_ORIG_DIFF_FI, mpol_refit_fi = DEFAULT_REFIT_DIFF_FI,
-               rel_orig_fi = DEFAULT_REL_ORIG_FI, rel_refit_fi = DEFAULT_REL_REFIT_FI):
+               rel_orig_fi = DEFAULT_REL_ORIG_FI, rel_refit_fi = DEFAULT_REL_REFIT_FI,
+               qm_mp_finame = DEFAULT_QM_MOLPOL_FI, mpol_wt: float = DEFAULT_MPOL_WT):
 
     ptyping = PolarTypeReader.PtypeReader(ptypes_fi)
 
@@ -170,12 +211,16 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
     nprobes = []
     # Set of all used polar types.
     ptypes_used = set()
+    # List of tensors for QM molecular polarizability values.
+    qm_molpols = []
 
     # 2D arrays
     # How much to weight each given probe (initially just 1 / no. of probes for this molecule)
     weights = []
     # Probe molecules: StructXYZ (QM_PR.xyz)
     probe_mols = []
+    # Probe directories.
+    pdirs = []
     # Probe delta-delta-ESP (qm_polarization.pot)
     targets = []
     # Where each probe starts in the flattened ESP array.
@@ -219,10 +264,15 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         ptype_ids.append(these_pts)
         ptypes_used.update(these_pts)
 
+        assert os.path.isfile(join(dir, qm_mp_finame))
+        qm_mp = EspAnalysis.qm_polarization_tensor(join(dir, qm_mp_finame))
+        qm_molpols.append(qm_mp)
+
         tgts = []
         pmols = []
         e_inds = []
         o_keys = []
+        pdir_list = []
 
         num_probes = 0
         for sdire in os.scandir(dir):
@@ -240,12 +290,14 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
             e_inds.append(tot_grid_points)
             tot_grid_points += target.shape[0]
             o_keys.append(join(to_sdir, 'QM_PR.key_0'))
+            pdir_list.append(sdir)
 
         targets.append(tgts)
         probe_mols.append(pmols)
         esp_indices.append(e_inds)
         nprobes.append(num_probes)
         out_keys.append(o_keys)
+        pdirs.append(pdir_list)
 
         wt = 1.0 / num_probes
         wts = [wt] * num_probes
@@ -256,6 +308,7 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
     submapping = [-1 for pt in ptyping.ptypes]
     n_pt_used = 0
     initial_x = []
+
     for i in sorted(ptypes_used):
         submapping[i-1] = n_pt_used
         initial_x.append(ptyping.ptypes[i-1].initial_polarizability)
@@ -265,11 +318,13 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
     eprint(f"submapping: {submapping}\ninitial X: {initial_x}\nptypes_used: {ptypes_used}")
     initial_x = np.array(initial_x, dtype=np.float64)
 
-    bounds = (0, np.inf)
+    lb = np.full_like(initial_x, 0.01)
+    ub = initial_x * 4.0
+    bounds = (lb, ub)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         opt_args = (probe_mols, out_keys, polar_mappings, potential, targets, executor, submapping, weights, sequential,
-                    verbose)
+                    verbose, qm_molpols, mpol_wt)
         eprint("Setup complete: beginning optimization")
         ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2,
                                                  bounds=bounds, xtol=tol)
@@ -290,17 +345,17 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         refit_tensors = []
         molec_names = []
 
-        for i, rdir in enumerate(ref_dirs):
-            qmr_xyz = join(rdir, 'QM_REF.xyz')
+        for i, pmols in enumerate(probe_mols):
+            for j, pmol in enumerate(pmols):
+                pdir = join(ref_dirs[i], pdirs[i][j])
+                write_cost(pmol, out_keys[i][j], join(pdir, 'MM_REF_BACK.pot'), join(pdir, 'qm_polarization.pot'), join(ref_dirs[i], qm_mp_finame), potential, polarize)
+                '''write_cost(pmol, fit_key, join(pdir, 'MM_REF_BACK.pot'), join(pdir, 'qm_polarization.pot'),
+                           join(rdir, qm_mp_finame), potential, polarize)'''
+            '''qmr_xyz = join(rdir, 'QM_REF.xyz')
             orig_key = join(rdir, 'QM_REF.key')
             fit_key = out_keys[i][0]
             assert os.path.isfile(qmr_xyz) and os.path.isfile(orig_key) and os.path.isfile(fit_key)
-            qm_mp = join(rdir, 'qm_molpols.csv')
-            if not os.path.isfile(qm_mp):
-                eprint(f"Quantum mechanics molecular polarizability file {qm_mp} does not exist: skipping this "
-                       f"molecule for molecular polarizability analysis.")
-
-            qm_tensor = EspAnalysis.qm_polarization_tensor(qm_mp)
+            qm_tensor = qm_molpols[i]
             orig_tensor = EspAnalysis.mm_polarization_tensor(qmr_xyz, orig_key, polarize=polarize)
             refit_tensor = EspAnalysis.mm_polarization_tensor(qmr_xyz, fit_key, polarize=polarize)
 
@@ -313,6 +368,10 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
             assert m
             mname = m.group(3)
             molec_names.append(mname)
+
+            pdir = join(rdir, pdirs[i][0])
+            #qm_mpol_fi: str = None, potential: str = 'potential', polarize: str = 'polarize', write_grid_points: bool = False
+            write_cost(ref_mols[i], fit_key, join(pdir, 'MM_REF_BACK.pot'), join(pdir, 'qm_polarization.pot'), join(rdir, qm_mp_finame), potential, polarize)'''
 
         qm_tensors = np.array(qm_tensors, dtype=np.float64)
         orig_tensors = np.array(orig_tensors, dtype=np.float64)
@@ -372,6 +431,8 @@ def main():
                         help='File to write output (tab-separated values) to.')
     parser.add_argument('-v', '--verbose', action='store_true', dest='verbose',
                         help='Print extra information (particularly timings for each target function evaluation).')
+    parser.add_argument('-m', '--molpol_wt', dest='mpol_wt', type=float, default=DEFAULT_MPOL_WT,
+                        help='Relative weighting of molecular polarizabilities vs. electrostatic potential.')
 
     args = parser.parse_args()
     mfis = get_molec_files(args.optimize_info)
@@ -388,7 +449,7 @@ def main():
         ref_files = None
 
     main_inner(tinker_path=args.tinker_path, ptypes_fi=args.ptypes_fi, n_threads = args.n_threads, ref_files=ref_files,
-               tol=args.tol, sequential=args.sequential, verbose=args.verbose)
+               tol=args.tol, sequential=args.sequential, verbose=args.verbose, mpol_wt=args.mpol_wt)
 
 
 if __name__ == "__main__":

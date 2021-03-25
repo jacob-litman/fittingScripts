@@ -32,7 +32,7 @@ DEFAULT_PROBE_MASS = 1.0
 class StructXYZ:
     def __init__(self, in_file: str, probe_types: Sequence[int] = None, key_file: str = None,
                  load_polar_types: bool = False, polar_type_fi: str = None):
-        self.in_file = in_file
+        self.in_file = os.path.abspath(in_file)
         with open(self.in_file, 'r') as f:
             in_line = f.readline()
             self.header_line = in_line
@@ -444,16 +444,24 @@ class StructXYZ:
 
     def get_esp_file(self, potential: str = 'potential', keyf: str = None, verbose: bool = False) -> str:
         if keyf is None:
-            keyf = self.key_file
+            keyf_abs = os.path.abspath(self.key_file)
+        else:
+            keyf_abs = os.path.abspath(keyf)
+
+        command = f"potential 3 {self.in_file} {keyf_abs} Y {keyf_abs}"
         if verbose:
-            eprint(f"Calling (with input capture): potential 3 {self.in_file} {keyf} Y {keyf}")
-        sp_args = [potential, '3', self.in_file, "-k", keyf, 'Y']
+            eprint(f"Calling (with input capture) from {os.getcwd()}: {command}")
+        sp_args = [potential, '3', self.in_file, "-k", keyf_abs, 'Y']
         output = subprocess.check_output(sp_args)
         for line in output.splitlines():
             line = str(line, encoding=sys.getdefaultencoding()).strip()
             if line.startswith('Electrostatic Potential Written To'):
                 esp_fi = re.sub('^Electrostatic Potential Written To : +', '', line)
-                return esp_fi
+                return os.path.abspath(esp_fi)
+        eprint(f"Erroneous output for command {command}:")
+        for line in output.splitlines():
+            line = str(line, encoding=sys.getdefaultencoding()).strip()
+            eprint(line)
         raise RuntimeError(f'Was unable to find the file electrostatic potential was written to for system {self}')
 
     def get_esp(self, potential: str = 'potential', keyf: str = None, delete_file: bool = True) -> np.ndarray:
