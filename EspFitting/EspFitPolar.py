@@ -338,7 +338,7 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
 
             qme = np.genfromtxt(join(to_sdir, 'qm_polarization.pot'), usecols=pot_cols, skip_header=1, dtype=np.float64)
             qmes.append(qme[:, 3])
-            gxyzs.append(qme[:, 0:2])
+            gxyzs.append(qme[:, 0:3])
             pesp_str = join(to_sdir, 'PR_NREF.pot')
             pesps.append(np.genfromtxt(pesp_str, usecols=[4], skip_header=1, dtype=np.float64))
             #pesp_str = StructureXYZ.StructXYZ(join(to_sdir, 'PR_NREF.xyz'))
