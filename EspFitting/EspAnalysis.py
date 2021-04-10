@@ -287,6 +287,7 @@ def main_inner(opts: OptParser, tinker_path: str = '', gauss_path: str = '', pro
 
         eprint("Generating MM_REF.pot")
         os.symlink('QM_PR.xyz', 'MM_REF.xyz')
+        #shutil.copy2('../QM_REF.xyz', 'MM_REF.xyz') # This should be more correct, but there are grid file issues.
         with open('QM_PR.key', 'r') as r:
             with open('MM_REF.key', 'w') as w:
                 for line in r:

@@ -442,14 +442,16 @@ class StructXYZ:
                     f.write(f"{probe_charge:f}\n")
                 f.write('\n')
 
-    def get_esp_file(self, potential: str = 'potential', keyf: str = None) -> str:
+    def get_esp_file(self, potential: str = 'potential', keyf: str = None, verbose: bool = False) -> str:
         if keyf is None:
             keyf_abs = os.path.abspath(self.key_file)
         else:
             keyf_abs = os.path.abspath(keyf)
 
-        command = f"potential 3 {self.in_file} {keyf_abs} Y {keyf_abs}"
+        command = f"potential 3 {self.in_file} -k {keyf_abs} Y"
         sp_args = [potential, '3', self.in_file, "-k", keyf_abs, 'Y']
+        if verbose:
+            eprint(f"Calling: {command}")
         output = subprocess.check_output(sp_args)
         for line in output.splitlines():
             line = str(line, encoding=sys.getdefaultencoding()).strip()
