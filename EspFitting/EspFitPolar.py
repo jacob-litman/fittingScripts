@@ -404,8 +404,10 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
                 if submapping[i] >= 0:
                     ptype.polarizability = x[submapping[i]]
                     del_pol = ptype.polarizability - ptype.initial_polarizability
-                    w.write(f"{ptype.id}\t{ptype.smarts_string}\t{ptype.name}\t{x[submapping[i]]:9.6f}"
-                            f"\t{ptype.initial_polarizability:9.6f}\t{del_pol:9.6f}\n")
+                else:
+                    del_pol = 0
+                w.write(f"{ptype.id}\t{ptype.smarts_string}\t{ptype.name}\t{ptype.polarizability:9.6f}"
+                        f"\t{ptype.initial_polarizability:9.6f}\t{del_pol:9.6f}\n")
 
         refit_tensors = []
         prefit_rms_ddesps = []
