@@ -26,7 +26,7 @@ molec_dir_patt = re.compile(r'^([0-9]{3})_(.+)_([^_]+)$')
 probe_dir_patt = re.compile(r'^[A-Z]+[1-9][0-9]*')
 probe_mpol_patt = re.compile(r'^( *multipole +999 +)0.12500')
 DEFAULT_ESP_WT = 1.0
-DEFAULT_MPOL_WT = 0.01
+DEFAULT_MPOL_WT = 0.005
 DEFAULT_DIFF_STEP = 0.001
 
 
@@ -201,13 +201,15 @@ def summarize_mpol_diff(mpol_errs: np.ndarray) -> np.ndarray:
 
 
 def write_mpol_csv(outfi: str, vals: np.ndarray, molec_names: Sequence[str], ptype_ids: Sequence[Sequence[int]],
-                   precis: int = 5):
+                   precis: int = 5, description=""):
     stats = summarize_mpol_diff(vals)
     stat_titles = ['RMSE', 'MSE', 'MUE', 'SD']
     assert precis < 15
 
     with open(outfi, 'w') as w:
         w.write("Molecule,Isotropic,xx,xy,yy,xz,yz,zz,Polar Type IDs\n")
+        w.write(f"Molecule Name,Isotropic {description},Polarizability Tensor Components,,,,,,Polarizability Types Used by This "
+                f"Molecule\n")
         for i, mname in enumerate(molec_names):
             w.write(mname)
             for j in range(7):
@@ -392,7 +394,7 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         eprint("Setup complete: beginning optimization")
         # TODO: Experiment with adding diff_step=DEFAULT_DIFF_STEP to the args.
         ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2,
-                                                 bounds=bounds, xtol=tol)
+                                                 bounds=bounds, xtol=tol, diff_step=DEFAULT_DIFF_STEP)
         sys.stderr.flush()
         sys.stdout.flush()
         eprint(f"Output of optimization: {ls_result}")
@@ -418,7 +420,11 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
             frd = []
             for j, pdir in enumerate(pdirs[i]):
                 tdir = join(rdir, pdir)
-                pm = probe_mols[i][j]
+                try:
+                    pm = probe_mols[i][j]
+                except IndexError as ie:
+                    eprint(f"Indices: {i}, {j}")
+                    raise ie
                 orig_key = pm.key_file
                 fit_key = out_keys[i][j]
                 qm_desp = qm_desps[i][j]
@@ -434,16 +440,22 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
 
                 with open(join(tdir, 'desp.csv'), 'w') as w:
                     w.write("X,Y,Z,QM,Pre-Fitting,Post-Fitting\n")
+                    w.write("Coordinates,,,Delta ESP (ESP of probe-molecule system minus ESP of probe and molecule "
+                            "separately),,,")
                     n_pts = gxyz.shape[0]
                     assert n_pts == fit_desp.shape[0] and n_pts == prefit_desp.shape[0]
-                    for i in range(n_pts):
-                        w.write(f"{gxyz[i][0]:.5f},{gxyz[i][1]:.5f},{gxyz[i][2]:.5f},{qm_desp[i]:.5f},"
-                                f"{prefit_desp[i]:.5f},{fit_desp[i]:.5f}\n")
+                    for l in range(n_pts):
+                        w.write(f"{gxyz[l][0]:.5f},{gxyz[l][1]:.5f},{gxyz[l][2]:.5f},{qm_desp[l]:.5f},"
+                                f"{prefit_desp[l]:.5f},{fit_desp[l]:.5f}\n")
             prefit_rms_ddesps.append(np.array(prd, dtype=np.float64))
             fit_rms_ddesps.append(np.array(frd, dtype=np.float64))
 
+        desp_header = "Name,Average,Probes...\n"
+        desp_comment_line = "Molecule Name,Average Delta-ESP (absolute polarization over all probes & grid points)," \
+                            "Per-Probe Average Delta-ESPs...\n"
         with open('prefit_rms_ddesp.csv', 'w') as w:
-            w.write("Name,Average,Probes...\n")
+            w.write(desp_header)
+            w.write(desp_comment_line)
             for i, mname in enumerate(molec_names):
                 mean_rmse = np.average(prefit_rms_ddesps[i])
                 w.write(f"{mname},{mean_rmse:.5f}")
@@ -452,7 +464,8 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
                 w.write("\n")
 
         with open('fit_rms_ddesp.csv', 'w') as w:
-            w.write("Name,Average,Probes...\n")
+            w.write(desp_header)
+            w.write(desp_comment_line)
             for i, mname in enumerate(molec_names):
                 mean_rmse = np.average(fit_rms_ddesps[i])
                 w.write(f"{mname},{mean_rmse:.5f}")
@@ -477,11 +490,15 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         orig_rel = JMLMath.divide_ignore_zero(orig_diff, qm_tensors)
         refit_rel = JMLMath.divide_ignore_zero(refit_diff, qm_tensors)
 
-        write_mpol_csv(qm_fi, qm_tensors, molec_names, ptype_ids)
-        write_mpol_csv(mpol_orig_fi, orig_diff, molec_names, ptype_ids)
-        write_mpol_csv(mpol_refit_fi, refit_diff, molec_names, ptype_ids)
-        write_mpol_csv(rel_orig_fi, orig_rel, molec_names, ptype_ids)
-        write_mpol_csv(rel_refit_fi, refit_rel, molec_names, ptype_ids)
+        write_mpol_csv(qm_fi, qm_tensors, molec_names, ptype_ids, description="Absolute QM Polarizability")
+        write_mpol_csv(mpol_orig_fi, orig_diff, molec_names, ptype_ids,
+                       description="Original MM-QM Polarizability Error (absolute)")
+        write_mpol_csv(mpol_refit_fi, refit_diff, molec_names, ptype_ids,
+                       description="Refit MM-QM Polarizability Error (absolute)")
+        write_mpol_csv(rel_orig_fi, orig_rel, molec_names, ptype_ids,
+                       description="Original MM-QM Polarizability Error (relative to QM values)")
+        write_mpol_csv(rel_refit_fi, refit_rel, molec_names, ptype_ids,
+                       description="Refit MM-QM Polarizability Error (relative to QM values)")
 
 
 def get_molec_files(optinfo: str) -> Sequence[str]:
@@ -523,12 +540,17 @@ def main():
                         help='File to write output (tab-separated values) to.')
     parser.add_argument('-v', '--verbose', action='store_true', dest='verbose',
                         help='Print extra information (particularly timings for each target function evaluation).')
-    parser.add_argument('-m', '--molpol_wt', dest='mpol_wt', type=float, default=DEFAULT_MPOL_WT,
-                        help='Relative weighting of molecular polarizabilities vs. electrostatic potential.')
+    parser.add_argument('-m', '--molpol_wt', dest='mpol_wt', type=float, default=1.0,
+                        help='Relative weighting of molecular polarizabilitity error')
+    parser.add_argument('--ew', '--esp_wt', dest='esp_wt', type=float, default=1.0,
+                        help='Relative weighting of electrostatic potential error')
 
     args = parser.parse_args()
     mfis = get_molec_files(args.optimize_info)
     assert len(mfis) > 0
+
+    mpol_wt = args.mpol_wt * DEFAULT_MPOL_WT
+    esp_wt = args.esp_wt * DEFAULT_ESP_WT
 
     if args.optimize_info is not None:
         ref_files = []
@@ -542,7 +564,7 @@ def main():
 
     eprint(f"Launching polarizability optimization with PID {os.getpid()}")
     main_inner(tinker_path=args.tinker_path, ptypes_fi=args.ptypes_fi, n_threads=args.n_threads, ref_files=ref_files,
-               tol=args.tol, sequential=args.sequential, verbose=args.verbose, mpol_wt=args.mpol_wt)
+               tol=args.tol, sequential=args.sequential, verbose=args.verbose, mpol_wt=mpol_wt, esp_wt=esp_wt)
 
 
 if __name__ == "__main__":

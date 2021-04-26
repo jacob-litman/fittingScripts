@@ -12,6 +12,7 @@ import subprocess
 import numpy as np
 
 import JMLUtils
+import StructureXYZ
 import SubPots
 from JMLUtils import eprint, verbose_call, name_to_atom, get_probe_dirs
 from OptionParser import OptParser
@@ -86,6 +87,8 @@ def parse_molpols(mpol_log: str = "molpols.log", mpol_out: str = default_mpol_ou
 
 def mm_polarization_tensor(input_xyz: str, input_key: str, polarize: str = 'polarize',
                            verbose: bool = False) -> np.ndarray:
+    if isinstance(input_xyz, StructureXYZ.StructXYZ):
+        input_xyz = input_xyz.in_file
     if not os.path.isfile(input_xyz):
         raise ValueError(f"Input xyz {input_xyz} is not a file.")
     if not os.path.isfile(input_key):
