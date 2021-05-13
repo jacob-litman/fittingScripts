@@ -78,7 +78,8 @@ class PtypeReader:
 
     def all_match_mol(self, mol: StructXYZ, verbose: bool = False) -> Sequence[Sequence[PolarType]]:
         obm = mol.ob_rep
-        assert obm is not None
+        if obm is None:
+            raise ValueError(f"Could not find OpenBabel representation for {mol}!")
         matches = [[] for _ in range(mol.n_atoms)]
 
         for pt in self.ptypes:
@@ -121,8 +122,8 @@ class PtypeReader:
         return nonredundant
 
 
-def main_inner(xyz_s: StructXYZ, verbose: bool, ptype_fi: str = None, ptyping: PtypeReader = None) -> \
-        (Sequence[PolarType], Mapping[int, int], PtypeReader):
+def main_inner(xyz_s: StructXYZ, verbose: bool, ptype_fi: str = None, ptyping: PtypeReader = None,
+               fail_on_multimatch: bool = False) -> (Sequence[PolarType], Mapping[int, int], PtypeReader):
     assert 'PC' not in xyz_s.atom_names
     if ptyping is None:
         assert ptype_fi is not None
@@ -134,9 +135,19 @@ def main_inner(xyz_s: StructXYZ, verbose: bool, ptype_fi: str = None, ptyping: P
         atype = xyz_s.assigned_atypes[i]
         if atype in ptype_map:
             if ptype_map[atype] != pt.id:
-                raise ValueError(f"Attempted to assign polar type {pt.id} to type {atype}, already assigned to "
-                                 f"{ptype_map[atype]}!")
-        ptype_map[xyz_s.assigned_atypes[i]] = pt.id
+                message = f"Attempted to assign polar type {pt.id} to type {atype}, already assigned to " \
+                          f"{ptype_map[atype]}!"
+                if fail_on_multimatch:
+                    raise ValueError(message)
+                else:
+                    eprint(f"WARNING: {message}")
+                    if pt.priority > ptypes[ptype_map[atype]].priority:
+                        eprint(f"Updating mapping for atom type {atype} from {ptype_map[atype]} to {pt.id}")
+                        ptype_map[atype] = pt.id
+            else:
+                ptype_map[xyz_s.assigned_atypes[i]] = pt.id
+        else:
+            ptype_map[xyz_s.assigned_atypes[i]] = pt.id
     if verbose:
         eprint(f"Mapping: {ptype_map}")
     return ptypes, ptype_map, ptyping
