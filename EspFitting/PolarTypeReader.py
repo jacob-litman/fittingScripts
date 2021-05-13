@@ -141,7 +141,8 @@ def main_inner(xyz_s: StructXYZ, verbose: bool, ptype_fi: str = None, ptyping: P
                     raise ValueError(message)
                 else:
                     eprint(f"WARNING: {message}")
-                    if pt.priority > ptypes[ptype_map[atype]].priority:
+                    prior_ptype = ptyping.ptypes[ptype_map[atype]]
+                    if pt.priority > prior_ptype.priority:
                         eprint(f"Updating mapping for atom type {atype} from {ptype_map[atype]} to {pt.id}")
                         ptype_map[atype] = pt.id
             else:
