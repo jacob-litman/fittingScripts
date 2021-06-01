@@ -30,8 +30,8 @@ DEFAULT_MPOL_WT = 0.005
 DEFAULT_DIFF_STEP = 0.001
 
 
-def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[int, int], submapping: Sequence[int],
-                 precis: int = 12):
+def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[int, int],
+                 inactive_map: Mapping[int, float], submapping: Sequence[int], precis: int = 12):
     with open(in_key, 'r') as r:
         with open(out_key, 'w') as w:
             for line in r:
@@ -42,9 +42,12 @@ def edit_keyfile(in_key: str, out_key: str, x: np.ndarray, atype_map: Mapping[in
                     if atype in atype_map:
                         index = atype_map[atype] - 1
                         submap_index = submapping[index]
-                        assert submap_index >= 0
+                        if submap_index < 0:
+                            raise ValueError(f"Submapping < 0: {submap_index}, {atype}, mapping {atype_map}")
                         out_polar = x[submap_index]
                         w.write(f"{m.group(1)}{m.group(2)}{out_polar:.{precis}f}{m.group(4).rstrip()}\n")
+                    elif atype in inactive_map:
+                        w.write(f"{m.group(1)}{m.group(2)}{inactive_map[atype]:.{precis}f}{m.group(4).rstrip()}\n")
                     else:
                         w.write(line)
                 else:
@@ -66,7 +69,8 @@ def cost_function(x: np.ndarray, executor: concurrent.futures.Executor,
                   probe_mols: Sequence[Sequence[StructureXYZ.StructXYZ]],
                   ref_mols: Sequence[Sequence[StructureXYZ.StructXYZ]], out_keys: Sequence[str],
                   qm_desps: Sequence[Sequence[np.ndarray]], probe_esps: Sequence[Sequence[np.ndarray]],
-                  qm_tensors: Sequence[np.ndarray], pt_maps: Sequence[Mapping[int, int]], submapping: Sequence[int],
+                  qm_tensors: Sequence[np.ndarray], pt_maps: Sequence[Mapping[int, int]],
+                  inactive_maps: Sequence[Mapping[int, float]], submapping: Sequence[int],
                   weights: np.ndarray = None, potential: str = 'potential', polarize: str = 'polarize',
                   esp_wt: float = DEFAULT_ESP_WT, mpol_wt: float = DEFAULT_MPOL_WT, sequential: bool = False,
                   verbose: bool = False) -> float:
@@ -82,7 +86,7 @@ def cost_function(x: np.ndarray, executor: concurrent.futures.Executor,
     for i, pml in enumerate(probe_mols):
         for j, pm in enumerate(pml):
             cbundle = (x, pm, ref_mols[i][j], out_keys[i][j], qm_desps[i][j], probe_esps[i][j], qm_tensors[i],
-                       pt_maps[i], submapping, weights[i][j], potential, polarize, esp_wt, mpol_wt)
+                       pt_maps[i], inactive_maps[i], submapping, weights[i][j], potential, polarize, esp_wt, mpol_wt)
             costbundles.append(cbundle)
 
     sys.stdout.flush()
@@ -126,11 +130,11 @@ DEFAULT_MPOL_COMPONENT_WEIGHTS = np.array([1.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.
 def cost_interior(x: np.ndarray, pm: StructureXYZ.StructXYZ, rm: StructureXYZ.StructXYZ, outkey: str,
                   qm_desp: np.ndarray, probe_esp: np.ndarray,
                   qm_tensor: np.ndarray,
-                  atype_map: Mapping[int, int], submapping: Sequence[int],
+                  atype_map: Mapping[int, int], inactive_map: Mapping[int, float], submapping: Sequence[int],
                   weight: float,
                   potential: str = 'potential', polarize: str = 'polarize',
                   esp_wt: float = DEFAULT_ESP_WT, mpol_wt: float = DEFAULT_MPOL_WT) -> (float, float):
-    edit_keyfile(pm.key_file, outkey, x, atype_map, submapping)
+    edit_keyfile(pm.key_file, outkey, x, atype_map, inactive_map, submapping)
     esp = esp_component(pm, rm, potential, outkey, qm_desp, probe_esp) * esp_wt * weight
     tensor = tensor_component(pm, polarize, outkey, qm_tensor) * mpol_wt * weight
     assert esp >= 0 and tensor >= 0
@@ -246,8 +250,10 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
 
     # Reference molecules: StructXYZ (QM_REF.xyz)
     ref_mols = []
-    # List of Map[int, int] for atom type to polar type ID (1-indexed).
+    # List of Map[int, int] for atom type to active (being fit) polar type ID (1-indexed).
     pt_maps = []
+    # List of Map[int, float] for atom type to inactive (not subject to fitting) polar type ID (1-indexed)
+    inactive_maps = []
     # Number of probes for each molecule.
     nprobes = []
     # Set of all used polar types.
@@ -308,8 +314,22 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
 
         ptypes_i, mapping_i, pt2 = PolarTypeReader.main_inner(sqmr, False, ptyping=ptyping)
         assert pt2 == ptyping
-        pt_maps.append(mapping_i)
-        these_pts = [pt.id for pt in sorted(set(ptypes_i))]
+        #pt_maps.append(mapping_i)
+        active_map_i = dict()
+        inactive_map_i = dict()
+        """Return values: ptypes is a list of each atom's assigned polar type, ptype_map is the mapping of atom type to 
+            polar type ID, and ptyping is either the ptyping parameter (if ptyping is not None), or the auto-generated 
+            PtypeReader (if ptyping is None)."""
+        for k, v in mapping_i.items():
+            pt = pt2.id_ptypes[v]
+            if pt.enabled:
+                active_map_i[k] = v
+            else:
+                inactive_map_i[k] = pt.initial_polarizability
+        pt_maps.append(active_map_i)
+        inactive_maps.append(inactive_map_i)
+
+        these_pts = [pt.id for pt in sorted(filter(lambda pt_i: pt_i.enabled is True, set(ptypes_i)))]
         ptype_ids.append(these_pts)
         ptypes_used.update(these_pts)
 
@@ -389,8 +409,8 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
     bounds = np.array((lb, ub))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
-        opt_args = (executor, probe_mols, ref_copies, out_keys, qm_desps, probe_esps, qm_tensors, pt_maps, submapping,
-                    weights, potential, polarize, esp_wt, mpol_wt, sequential, verbose)
+        opt_args = (executor, probe_mols, ref_copies, out_keys, qm_desps, probe_esps, qm_tensors, pt_maps,
+                    inactive_maps, submapping, weights, potential, polarize, esp_wt, mpol_wt, sequential, verbose)
         eprint("Setup complete: beginning optimization")
         # TODO: Experiment with adding diff_step=DEFAULT_DIFF_STEP to the args.
         ls_result = scipy.optimize.least_squares(cost_function, initial_x, jac='3-point', args=opt_args, verbose=2,
@@ -401,15 +421,19 @@ def main_inner(tinker_path: str = '', ptypes_fi: str = 'polarTypes.tsv', n_threa
         x = ls_result.x
 
         with open(outfile, 'w') as w:
-            w.write("ID\tSMARTS\tName\tFit Polarizabiliities\tInitial Polarizabilities\tDelta Polarizability\n")
+            w.write("ID\tSMARTS\tAtom Index\tName\tPolarizability\tCategory\tEnabled\tPre-Fit Polarizability\t"
+                    "Delta Polarizability\n")
             for i, ptype in enumerate(ptyping.ptypes):
                 if submapping[i] >= 0:
                     ptype.polarizability = x[submapping[i]]
                     del_pol = ptype.polarizability - ptype.initial_polarizability
                 else:
                     del_pol = 0
-                w.write(f"{ptype.id}\t{ptype.smarts_string}\t{ptype.name}\t{ptype.polarizability:9.6f}"
-                        f"\t{ptype.initial_polarizability:9.6f}\t{del_pol:9.6f}\n")
+                w.write(f"{ptype.id}\t{ptype.format_smarts()}\t{ptype.atom_indices[0]}")
+                for i in range(1, len(ptype.atom_indices), 1):
+                    w.write(f",{ptype.atom_indices[i]}")
+                w.write(f"\t{ptype.name}\t{ptype.polarizability}\t{ptype.priority}\t{ptype.enabled}\t"
+                        f"{ptype.initial_polarizability}\t{del_pol}\n")
 
         refit_tensors = []
         prefit_rms_ddesps = []

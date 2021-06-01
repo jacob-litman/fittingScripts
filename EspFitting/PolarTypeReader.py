@@ -1,9 +1,9 @@
 import argparse
 from typing import Sequence, Mapping
-import re
 
 from openbabel import pybel
 
+import JMLUtils
 from JMLUtils import eprint
 from StructureXYZ import StructXYZ
 
@@ -20,27 +20,44 @@ def sub_custom_smarts(smarts: str) -> str:
 class PolarType:
     def __init__(self, def_line: str):
         toks = def_line.strip().split("\t")
-        if len(toks) != 6:
+        if len(toks) < 6:
             raise ValueError(f"Invalid number of tokens for line {def_line}\nTokens read: {toks}")
         self.id = int(toks[0])
-        self.smarts_string = sub_custom_smarts(toks[1])
-        try:
-            self.smarts = pybel.Smarts(self.smarts_string)
-        except IOError as ioe:
-            eprint(f"Failed to generate SMARTS pattern from tokens {toks}")
-            raise ioe
+        self.smarts_strings = []
+        self.smarts_patts = []
+        for subtok in toks[1].split("%"):
+            try:
+                sm_str = sub_custom_smarts(subtok)
+                sm = pybel.Smarts(sm_str)
+                self.smarts_strings.append(sm_str)
+                self.smarts_patts.append(sm)
+            except IOError as ioe:
+                eprint(f"Failed to generate SMARTS pattern from tokens {toks}")
+                raise ioe
+
         self.atom_indices = [int(subtok) - 1 for subtok in toks[2].split(",")]
         self.name = toks[3]
         self.initial_polarizability = float(toks[4])
         self.polarizability = self.initial_polarizability
         self.priority = int(toks[5])
+        if len(toks) > 6:
+            self.enabled = JMLUtils.parse_truth(toks[6])
+        else:
+            self.enabled = True
 
     def get_priority(self) -> int:
         return self.priority
 
+    def format_smarts(self, delimiter: str = "%") -> str:
+        ret_str = self.smarts_strings[0]
+        for i in range(1, len(self.smarts_strings), 1):
+            ret_str += f"{delimiter}{self.smarts_strings[i]}"
+        return ret_str
+
     def __str__(self) -> str:
-        return f"Pattern {self.name:<30s}-{self.id:>4d}, priority {self.priority:>2d}, initial polarizability " \
-               f"{self.initial_polarizability:7.4f}, SMARTS {self.smarts_string}"
+        ret_str = f"Pattern {self.name:<30s}-{self.id:>4d}, priority {self.priority:>2d}, initial polarizability " \
+               f"{self.initial_polarizability:7.4f}, enabled {self.enabled}, SMARTS {self.format_smarts(delimiter=',')}"
+        return ret_str
 
     def __lt__(self, other):
         return self.id < other.id
@@ -69,12 +86,15 @@ class PtypeReader:
     def __init__(self, infile: str):
         self.infile = infile
         self.ptypes = []
+        self.id_ptypes = dict()
         with open(infile, 'r') as r:
             for line in r:
                 line = line.strip()
                 if line == "" or line.startswith("ID") or line.startswith("#"):
                     continue
-                self.ptypes.append(PolarType(line))
+                new_ptype = PolarType(line)
+                self.ptypes.append(new_ptype)
+                self.id_ptypes[new_ptype.id] = new_ptype
 
     def all_match_mol(self, mol: StructXYZ, verbose: bool = False) -> Sequence[Sequence[PolarType]]:
         obm = mol.ob_rep
@@ -83,7 +103,9 @@ class PtypeReader:
         matches = [[] for _ in range(mol.n_atoms)]
 
         for pt in self.ptypes:
-            smart_matches = pt.smarts.findall(obm)
+            smart_matches = []
+            for sm in pt.smarts_patts:
+                smart_matches.extend(sm.findall(obm))
             for match in smart_matches:
                 # Assign this match to the first atom index listed, and to subsequent indices IFF they are of the same element.
                 atom = match[pt.atom_indices[0]] - 1
@@ -124,6 +146,9 @@ class PtypeReader:
 
 def main_inner(xyz_s: StructXYZ, verbose: bool, ptype_fi: str = None, ptyping: PtypeReader = None,
                fail_on_multimatch: bool = False) -> (Sequence[PolarType], Mapping[int, int], PtypeReader):
+    """Return values: ptypes is a list of each atom's assigned polar type, ptype_map is the mapping of atom type to
+    polar type ID, and ptyping is either the ptyping parameter (if ptyping is not None), or the auto-generated
+    PtypeReader (if ptyping is None)."""
     assert 'PC' not in xyz_s.atom_names
     if ptyping is None:
         assert ptype_fi is not None

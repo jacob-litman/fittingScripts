@@ -285,3 +285,10 @@ def parse_jml_range(range_str: str) -> Sequence[int]:
 
 def run_potential_3(potential: str, file_base: str):
     verbose_call([potential, "3", f"{file_base}.xyz", "Y"])
+
+
+def parse_truth(val: str) -> bool:
+    false_vals = ['false', '0', 'disabled', 'no']
+    if val.lower() in false_vals:
+        return False
+    return bool(val)
