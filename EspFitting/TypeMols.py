@@ -42,13 +42,12 @@ def main_inner():
         for pt_i in ptypes_i:
             ptype_mols[pt_i].add(dir)
 
-    print(f"Polar type,SMARTS,molecules...")
+    print(f"Polar type\tSMARTS\tmolecules...")
     for k, v in ptype_mols.items():
         if len(v) > 0:
-            #print(f"Polar type {k.name} ({k.format_smarts(delimiter=',')}) ")
-            print(f"{k.name},{k.format_smarts()}", end='')
+            print(f"{k.name}\t{k.format_smarts()}", end='')
             for mol in v:
-                print(f",{mol}", end='')
+                print(f"\t{mol}", end='')
             print('')
 
 
