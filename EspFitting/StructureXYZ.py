@@ -16,7 +16,7 @@ from JMLUtils import eprint, version_file, cryst_patt, verbose_call
 # Captured: atom type, atom class, atom name, atom description, atomic number, mass, valency
 adef_patt = re.compile(r'^atom +(\d+) +(\d+) +(\S+) +"?([^"]+)"? +(\d+) +(\d+\.\d+) +(\d+)\s*$')
 mpole_cont_patt = re.compile(r'^( +-?\d+\.\d+)+ *\\? *$')
-polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( [ 0-9]+ *)$')
+polarize_patt = re.compile(r'^(polarize +\d+ +)(\d+\.\d+ +\d+\.\d+)( [ 0-9]+ *)*$')
 DEFAULT_PROBE_ANUM = 1
 DEFAULT_PSI4_ITERS = 300
 # TODO: Either use the periodictable package (Pip) or flesh this out.
@@ -278,8 +278,10 @@ class StructXYZ:
                         m = polarize_patt.match(line)
                         f.write(m.group(1))
                         f.write("0.0000     0.0100")
-                        f.write(m.group(3) + "\n")
-                        pass
+                        if m.group(3) is None:
+                            f.write("\n")
+                        else:
+                            f.write(m.group(3) + "\n")
 
                     else:
                         f.write(line)
