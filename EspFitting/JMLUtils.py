@@ -218,7 +218,11 @@ def extract_molspec(qm_fi: str, program: QMProgram) -> (int, int, np.ndarray, np
         raise ValueError(f"Unrecognized QM program {program}")
 
     coords = np.array(coords, dtype=np.float64)
-    assert charge is not None and spin is not None and len(atoms) > 0 and len(atoms) == coords.shape[0] and coords.shape[1] == 3
+    assert charge is not None
+    assert spin is not None
+    assert len(atoms) > 0
+    assert len(atoms) == coords.shape[0]
+    assert coords.shape[1] == 3
     return charge, spin, np.array(atoms), coords
 
 
